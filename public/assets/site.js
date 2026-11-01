@@ -63,7 +63,7 @@
       [ext(LH.zalo, 'Zalo'), ext(LH.facebook, 'Facebook'), ext(LH.linkedin, 'LinkedIn')].forEach(function (x) { if (x) contact.push(x); });
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
-      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '. Trang tuyển dụng cá nhân, không phải công ty tuyển dụng.</span>' +
+      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
         contact.join('') + '<span class="sp"><a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
