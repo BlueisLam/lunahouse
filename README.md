@@ -8,7 +8,7 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
 
 1. **Supabase**: tạo project (hoặc dùng project LunaTicket, bảng đều có tiền tố `lh_`). SQL Editor → chạy `supabase/schema.sql`. Lấy `Project URL` và `service_role key` (Settings → API).
 2. **Cloudflare Pages**: Workers & Pages → Create → Pages → Connect to Git → chọn repo này.
-   - Framework preset: None · Build command: để trống · Build output directory: `public`
+   - Framework preset: None · Build command: `npm install --omit=dev` (bắt buộc, để cài thư viện cho Functions) · Build output directory: `public`
 3. **Biến môi trường** (Settings → Variables and Secrets, nên đặt loại *Secret*), xem `.env.example`:
    - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
    - `ADMIN_PASSWORD` (≥ 16 ký tự), `SESSION_SECRET` (`openssl rand -hex 32`)
