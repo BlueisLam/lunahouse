@@ -333,6 +333,20 @@ test('track: bị từ chối → hiện bước dừng; feedback chỉ có khi 
   t = await trk();
   assert.match(t.public_note, /system design/);
 });
+test('môi trường dev: tiền tố bảng/bucket và nhãn thông báo', async () => {
+  const db = require('../server/_lib/db');
+  assert.strictEqual(db.mapTable('lh_jobs'), 'lh_jobs', 'production giữ nguyên');
+  assert.strictEqual(db.mapBucket('lh-cv'), 'lh-cv');
+  process.env.TABLE_PREFIX = 'lhdev_'; process.env.BUCKET_NAME = 'lhdev-cv'; process.env.ENV_LABEL = 'DEV';
+  try {
+    assert.strictEqual(db.mapTable('lh_candidates'), 'lhdev_candidates');
+    assert.strictEqual(db.mapTable('other_table'), 'other_table');
+    assert.strictEqual(db.mapBucket('lh-cv'), 'lhdev-cv');
+    H.calls.length = 0;
+    await require('../server/_lib/notify').telegram('xin chào');
+    assert.match(H.calls.find(c => /telegram/.test(c.url)).body.text, /^<b>\[DEV\]<\/b> xin chào/);
+  } finally { delete process.env.TABLE_PREFIX; delete process.env.BUCKET_NAME; delete process.env.ENV_LABEL; }
+});
 test('sniff: PDF có byte rác phía trước vẫn nhận; file lạ vẫn bị từ chối', async () => {
   const U = require('../server/_lib/util');
   assert.strictEqual(U.sniffFile(Buffer.concat([Buffer.from('\r\n\xef\xbb\xbf  '), Buffer.from('%PDF-1.7\n...')])), 'pdf');

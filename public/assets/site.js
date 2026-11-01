@@ -35,7 +35,16 @@
   }
 
   /* ---------- khung trang ---------- */
+  /** Bản preview của Cloudflare (xxx.lunahouse.pages.dev) hiện dải DEV để khỏi nhầm với production. */
+  function devStrip() {
+    var h = location.hostname;
+    if (!(/\.pages\.dev$/.test(h) && h.split('.').length > 3)) return;
+    var d = document.createElement('div'); d.className = 'devstrip'; d.textContent = 'DEV · bản thử nghiệm, không phải trang thật';
+    document.body.insertBefore(d, document.body.firstChild);
+  }
+
   function chrome() {
+    devStrip();
     var page = document.body.getAttribute('data-page');
     var nav = [['/', 'Việc làm', 'home'], ['/apply', 'Gửi CV', 'apply'], ['/track', 'Tra cứu', 'track']];
     var top = $('#top');

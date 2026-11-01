@@ -4,6 +4,8 @@ const { BY_KEY } = require('./status');
 
 const site = () => (process.env.SITE_URL || process.env.URL || 'https://lunahouse.click').replace(/\/$/, '');
 
+const envTag = () => (process.env.ENV_LABEL ? `[${process.env.ENV_LABEL}] ` : '');
+
 async function postJson(url, body, headers) {
   const r = await fetch(url, {
     method: 'POST',
@@ -21,7 +23,7 @@ async function telegram(html) {
   const token = process.env.TELEGRAM_BOT_TOKEN, chat = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chat) return { skipped: 'telegram' };
   await postJson(`https://api.telegram.org/bot${token}/sendMessage`, {
-    chat_id: chat, text: html, parse_mode: 'HTML', disable_web_page_preview: true,
+    chat_id: chat, text: (envTag() ? `<b>${envTag().trim()}</b> ` : '') + html, parse_mode: 'HTML', disable_web_page_preview: true,
   });
   return { ok: true };
 }
@@ -32,7 +34,7 @@ async function email({ to, subject, html }) {
   if (!key || !to) return { skipped: 'email' };
   await postJson('https://api.resend.com/emails', {
     from: process.env.MAIL_FROM || 'Luna <onboarding@resend.dev>',
-    to: [].concat(to), subject, html,
+    to: [].concat(to), subject: envTag() + subject, html,
     reply_to: process.env.MAIL_REPLY_TO || undefined,
   }, { authorization: `Bearer ${key}` });
   return { ok: true };

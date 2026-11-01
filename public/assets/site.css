@@ -278,3 +278,5 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 .ci { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font: 700 16px/1 var(--display); background: var(--ink); color: var(--bg); }
 .ci.linkedin { background: #0a66c2; color: #fff; } .ci.facebook { background: #1877f2; color: #fff; } .ci.zalo { background: #0068ff; color: #fff; }
 .foot .wrap { flex-wrap: wrap; gap: 6px 16px; }
+
+.devstrip { background: #c2410c; color: #fff; text-align: center; font: 600 13px/1 var(--mono); padding: 8px 12px; letter-spacing: .02em; }

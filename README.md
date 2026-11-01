@@ -31,6 +31,15 @@ npm run mock      # http://localhost:8888, DB giả có dữ liệu mẫu, admin
 cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, nối Supabase thật
 ```
 
+## Môi trường dev (thử trước, rồi mới lên production)
+- Nhánh `main` = **production** (lunahouse.click). Nhánh `dev` = **dev**: Cloudflare tự build và cho một link riêng `dev.<tên-project>.pages.dev` (có dải cam "DEV" ở đầu trang).
+- Quy trình: sửa code ở nhánh `dev` → thử trên link dev → khi ổn mới merge `dev` vào `main` (production tự deploy).
+- Dev dùng **chung project Supabase** nhưng bảng và bucket riêng (`lhdev_*`, `lhdev-cv`), nên không đụng dữ liệu thật:
+  1. Chạy `npm run schema:dev`, rồi chạy file `supabase/schema.dev.sql` trong SQL Editor của Supabase (một lần).
+  2. Cloudflare Pages → Settings → Variables and Secrets → mục **Preview** (không phải Production), thêm: `TABLE_PREFIX=lhdev_`, `BUCKET_NAME=lhdev-cv`, `ENV_LABEL=DEV`, cùng các biến còn lại (Supabase URL/key, `ADMIN_PASSWORD`, `SESSION_SECRET`, Telegram...). Có thể dùng mật khẩu admin khác production.
+  3. Khi sửa `supabase/schema.sql`, nhớ chạy lại `npm run schema:dev` và áp dụng thay đổi cho cả hai bên.
+- Thông báo Telegram và email từ dev có tiền tố `[DEV]`. Muốn tách hẳn, dùng bot Telegram hoặc chat khác trong biến Preview.
+
 ## Cách hoạt động (khác biệt so với server thường)
 - Gói free của Cloudflare giới hạn **10ms CPU mỗi request**, nên CV được upload dạng multipart (không mã hoá base64 trong function).
 - Groq chỉ nhận chữ. **Trình duyệt admin tự bóc chữ từ PDF** (thư viện pdf.js nằm trong `public/assets/vendor/`) rồi gửi lên cho AI. DOCX được bóc chữ ở server. CV dạng ảnh hoặc PDF scan chỉ đọc được nếu bạn đặt `GROQ_VISION_MODEL`; nếu không, hồ sơ báo "Đọc CV lỗi" và bạn nhập tay thông tin.

@@ -37,6 +37,13 @@
       });
     });
   }
+  (function () {
+    var h = location.hostname;
+    if (/\.pages\.dev$/.test(h) && h.split('.').length > 3) document.addEventListener('DOMContentLoaded', function () {
+      var d = document.createElement('div'); d.className = 'devstrip'; d.textContent = 'DEV · bản thử nghiệm, không phải trang thật';
+      document.body.insertBefore(d, document.body.firstChild);
+    });
+  })();
   var toastT;
   function toast(m, err) {
     var t = $('.admtoast'); if (t) t.remove();

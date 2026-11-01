@@ -7,7 +7,7 @@
     "dev": "wrangler pages dev public",
     "test": "node test/run.js",
     "mock": "node test/dev-server.js",
-    "deploy": "wrangler pages deploy public --project-name lunahouse"
+    "schema:dev": "node scripts/make-dev-schema.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
