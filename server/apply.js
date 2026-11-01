@@ -33,7 +33,10 @@ function readCv(b) {
   if (!buffer.length) throw new U.HttpError(400, 'File CV bị rỗng, bạn chọn lại giúp mình nhé.');
   if (buffer.length > MAX_CV_BYTES) throw new U.HttpError(413, 'CV lớn hơn 4MB. Bạn nén file hoặc xuất lại PDF nhẹ hơn nhé.');
   const kind = U.sniffFile(buffer);
-  if (!kind) throw new U.HttpError(400, 'Mình chỉ nhận CV dạng PDF, DOCX, JPG hoặc PNG.');
+  if (!kind) {
+    console.error('[apply] không nhận diện được file', cv.name, buffer.length, 'bytes, đầu file:', buffer.subarray(0, 12).toString('hex'));
+    throw new U.HttpError(400, 'Mình chỉ nhận CV dạng PDF, DOCX, JPG hoặc PNG.');
+  }
   const name = U.clean(cv.name, 120) || 'cv.' + kind;
   const ext = (name.split('.').pop() || '').toLowerCase();
   if (!EXT[kind].includes(ext)) throw new U.HttpError(400, 'Đuôi file không khớp với nội dung file. Bạn xuất lại CV rồi thử nhé.');

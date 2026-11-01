@@ -315,6 +315,12 @@ test('parse: PDF mà không có chữ → báo lỗi rõ; ảnh cần GROQ_VISIO
   const call = H.calls.find(c => /groq/.test(c.url));
   assert.strictEqual(call.body.model, 'vision-model-x'); assert.strictEqual(call.body.messages[0].content[1].type, 'image_url');
 });
+test('sniff: PDF có byte rác phía trước vẫn nhận; file lạ vẫn bị từ chối', async () => {
+  const U = require('../server/_lib/util');
+  assert.strictEqual(U.sniffFile(Buffer.concat([Buffer.from('\r\n\xef\xbb\xbf  '), Buffer.from('%PDF-1.7\n...')])), 'pdf');
+  assert.strictEqual(U.sniffFile(Buffer.from('MZ\x90\x00\x03\x00\x00\x00\x04\x00')), null);
+  assert.strictEqual(U.sniffFile(Buffer.from('<html>%PDF- not at start</html>'.padStart(2000, ' '))), null, 'quá 1024 byte thì không tính');
+});
 test('upload multipart (như trình duyệt gửi): apply + admin', async () => {
   const mk = (extra) => { const f = new FormData(); Object.entries(extra).forEach(([k, v]) => f.append(k, v)); return f; };
   const blob = new Blob([Buffer.from(H.fakePdf('mp'), 'base64')], { type: 'application/pdf' });

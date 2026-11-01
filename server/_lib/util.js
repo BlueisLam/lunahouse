@@ -119,7 +119,8 @@ function wrap(fn) {
 /** Nhận diện loại file qua byte đầu (không tin đuôi file / content-type do client gửi). */
 function sniffFile(buf) {
   if (!buf || buf.length < 8) return null;
-  if (buf.slice(0, 4).toString() === '%PDF') return 'pdf';
+  // PDF chuẩn cho phép có vài byte rác (BOM, xuống dòng...) trước "%PDF-" trong 1024 byte đầu.
+  if (buf.subarray(0, 1024).includes(Buffer.from('%PDF-'))) return 'pdf';
   if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) return 'docx';
   if (buf[0] === 0x89 && buf.slice(1, 4).toString() === 'PNG') return 'png';
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpg';
