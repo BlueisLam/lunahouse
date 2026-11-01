@@ -1,0 +1,6 @@
+# Chạy thử với Cloudflare thật trên máy: copy thành .dev.vars rồi chạy `npm run dev`.
+# Danh sách biến giống .env.example.
+SUPABASE_URL=https://xxxx.supabase.co
+SUPABASE_SERVICE_KEY=
+ADMIN_PASSWORD=doi-mat-khau-dai-it-nhat-16-ky-tu
+SESSION_SECRET=

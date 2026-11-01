@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#f4f2fb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lunahouse">
+<title>Lunahouse · Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317143a'/%3E%3Cpath d='M21 6.5a10 10 0 1 0 0 19 8.2 8.2 0 0 1 0-19z' fill='%23f4c23d'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/site.css">
+<link rel="stylesheet" href="/assets/admin.css">
+<script src="/assets/admin.js" defer></script>
+</head>
+<body class="adm">
+<div id="login" class="login hide">
+  <form id="lf">
+    <span class="logo"><span class="moon" aria-hidden="true"></span>Lunahouse</span>
+    <h1>Đăng nhập admin</h1>
+    <p class="sub">Khu vực quản lý hồ sơ ứng viên.</p>
+    <div id="lerr" class="alert err hide" role="alert"></div>
+    <div class="field"><label for="pw">Mật khẩu</label><input class="in" id="pw" type="password" autocomplete="current-password" required></div>
+    <button class="btn block" type="submit" id="lbtn">Đăng nhập</button>
+  </form>
+</div>
+<div id="app" class="hide"></div>
+<div id="layer"></div>
+</body>
+</html>

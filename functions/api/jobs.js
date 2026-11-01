@@ -1,0 +1,3 @@
+import { run } from '../../server/_lib/cf.js';
+import * as mod from '../../server/jobs-public.js';
+export const onRequest = (ctx) => run(mod.default || mod, ctx);

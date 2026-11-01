@@ -1,0 +1,22 @@
+{
+  "name": "lunahouse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lunahouse — trang tuyển dụng cá nhân: JD, apply, tra cứu kết quả, admin kho CV",
+  "scripts": {
+    "dev": "wrangler pages dev public",
+    "test": "node test/run.js",
+    "mock": "node test/dev-server.js",
+    "deploy": "wrangler pages deploy public --project-name lunahouse"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "mammoth": "^1.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
