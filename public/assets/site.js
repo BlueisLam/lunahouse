@@ -1,4 +1,4 @@
-/* Lunahouse — trang công khai: danh sách job, JD + ứng tuyển, tra cứu hồ sơ */
+/* Luna — trang công khai: danh sách job, JD + ứng tuyển, tra cứu hồ sơ */
 (function () {
   'use strict';
   var LH = window.LH || {};
@@ -41,7 +41,7 @@
     var top = $('#top');
     if (top) {
       top.className = 'top';
-      top.innerHTML = '<div class="wrap"><a class="logo" href="/"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Lunahouse') + '</a>' +
+      top.innerHTML = '<div class="wrap"><a class="logo" href="/"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a>' +
         '<nav class="nav" aria-label="Điều hướng">' + nav.map(function (n) {
           return '<a href="' + n[0] + '"' + (page === n[2] || (page === 'job' && n[2] === 'home') ? ' aria-current="page"' : '') + '>' + n[1] + '</a>';
         }).join('') + '</nav></div>';
@@ -50,16 +50,29 @@
     if (foot) {
       var contact = [];
       if (LH.contactEmail) contact.push('<a href="mailto:' + esc(LH.contactEmail) + '">' + esc(LH.contactEmail) + '</a>');
-      if (LH.zalo) contact.push('<a href="' + esc(LH.zalo) + '" rel="noopener">Zalo</a>');
+      var ext = function (u, label) { return /^https:\/\//.test(u || '') ? '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : ''; };
+      [ext(LH.zalo, 'Zalo'), ext(LH.facebook, 'Facebook'), ext(LH.linkedin, 'LinkedIn')].forEach(function (x) { if (x) contact.push(x); });
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
-      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Lunahouse') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
+      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
         contact.join('') + '<span class="sp"><a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
 
+  function communities() {
+    var box = $('#community'), list = (LH.communities || []).filter(function (c) { return /^https:\/\//.test(c.url || ''); });
+    if (!box || !list.length) return;
+    var ico = { linkedin: 'in', facebook: 'f', zalo: 'Z' };
+    box.innerHTML = '<div class="sec-head" style="margin-top:44px"><h2>Cộng đồng tuyển dụng IT</h2></div>' +
+      '<div class="comm">' + list.map(function (c) {
+        return '<a class="comm-i" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer"><span class="ci ' + esc(c.kind || '') + '" aria-hidden="true">' + (ico[c.kind] || '#') + '</span>' +
+          '<span><b>' + esc(c.name || '') + '</b><small>' + esc(c.note || '') + '</small></span></a>';
+      }).join('') + '</div>';
+  }
+
   /* ---------- trang chủ ---------- */
   function home() {
+    communities();
     var state = { jobs: [], q: '', level: '' };
     var box = $('#jobs');
     function render() {
@@ -106,7 +119,7 @@
     var app = $('#app');
     api('/api/jobs?slug=' + encodeURIComponent(slug)).then(function (r) {
       var j = r.job;
-      document.title = j.title + ' · ' + (LH.brand || 'Lunahouse');
+      document.title = j.title + ' · ' + (LH.brand || 'Luna');
       var meta = $('meta[name="description"]'); if (meta) meta.setAttribute('content', (j.summary || j.title).slice(0, 155));
       var nice = (j.nice_to_have_tech || []);
       app.innerHTML =
@@ -121,7 +134,7 @@
         (nice.length ? '<section><h2>Là điểm cộng</h2><div class="chips">' + chips(nice, 'nice') + '</div></section>' : '') +
         (bullets(j.benefits).length ? '<section><h2>Quyền lợi</h2>' + list(j.benefits) + '</section>' : '') +
         '<section><h2>Cách làm việc và quy trình</h2><ul><li>Giờ làm việc 9:00–18:00, thứ Hai đến thứ Sáu.</li>' +
-        '<li>Phỏng vấn 2 vòng, trực tiếp (offline).</li><li>Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.</li></ul></section></div>' +
+        '<li>Phỏng vấn 2 vòng, online hoặc offline tuỳ vị trí.</li><li>Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.</li></ul></section></div>' +
         '<aside class="side"><div class="facts"><dl>' +
         ((j.must_have_tech || []).length ? '<div><dt>Công nghệ chính</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
         ((j.domains || []).length ? '<div><dt>Lĩnh vực</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
@@ -153,7 +166,7 @@
       '<div class="field"><span class="lab">CV của bạn</span><label class="drop" id="drop" for="f-cv"><span class="ico" aria-hidden="true">⬆</span><span><span class="t" id="cvt">Chọn file CV</span><br><span class="s" id="cvs">PDF, DOCX, JPG hoặc PNG · tối đa 4MB</span></span><input id="f-cv" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf"></label></div>' +
       '<div class="field"><label for="f-note">Lời nhắn <span class="opt">(không bắt buộc)</span></label><textarea class="in" id="f-note" name="cover_note" maxlength="1200" placeholder="Vài dòng về điều bạn đang tìm kiếm."></textarea></div>' +
       '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
-      '<label class="check" style="margin-bottom:20px"><input type="checkbox" id="f-consent"><span>Mình đồng ý để ' + esc(LH.recruiter || 'Lunahouse') + ' lưu hồ sơ và thông tin liên hệ này để phục vụ tuyển dụng, kể cả liên hệ về các vị trí phù hợp khác. Xem <a href="/privacy.html" target="_blank" rel="noopener">chính sách quyền riêng tư</a>.</span></label>' +
+      '<label class="check" style="margin-bottom:20px"><input type="checkbox" id="f-consent"><span>Mình đồng ý để ' + esc(LH.recruiter || 'Luna') + ' lưu hồ sơ và thông tin liên hệ này để phục vụ tuyển dụng, kể cả liên hệ về các vị trí phù hợp khác. Xem <a href="/privacy.html" target="_blank" rel="noopener">chính sách quyền riêng tư</a>.</span></label>' +
       '<button class="btn block" type="submit" id="asub">' + (job ? 'Gửi hồ sơ ứng tuyển' : 'Gửi CV vào kho tài năng') + '</button></form>';
 
     var file = null, form = $('#af'), err = $('#aerr'), drop = $('#drop');
@@ -214,7 +227,7 @@
 
   function success(el, r, job) {
     el.innerHTML = '<div class="stub"><div class="stub-top"><div class="kicker"><span class="moon" aria-hidden="true"></span>Đã nhận hồ sơ</div>' +
-      '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Lunahouse')) + '</div>' +
+      '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Luna')) + '</div>' +
       '<div class="code"><span id="ccode">' + esc(r.code) + '</span><button type="button" id="ccopy">Sao chép</button></div></div>' +
       '<div class="stub-bot"><p>Mình đã gửi email xác nhận tới <b>' + esc(r.email) + '</b> (nhớ xem cả mục Spam). Giữ mã này để tra cứu tiến độ bất cứ lúc nào, cùng với email hoặc số điện thoại bạn vừa nhập.</p>' +
       '<div class="hero-actions" style="margin-top:18px"><a class="btn" href="/track?code=' + encodeURIComponent(r.code) + '">Tra cứu hồ sơ</a><a class="btn ghost" href="/">Xem vị trí khác</a></div></div></div>';
@@ -245,15 +258,15 @@
         });
       } else {
         items = (r.timeline || []).filter(function (t) { return t.status !== r.status; }).map(function (t) { return { cls: 'done', label: t.label, at: t.at }; });
-        items.push({ cls: 'end', label: r.status_label, at: events[r.status] });
+        items.push({ cls: 'end', label: r.status_label, at: events[r.status], sub: r.failed_after ? 'Dừng sau bước: ' + r.failed_after : '' });
       }
       out.innerHTML = '<div class="stub"><div class="stub-top"><div class="kicker"><span class="moon" aria-hidden="true"></span>Hồ sơ của ' + esc(r.candidate_name) + '</div>' +
-        '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Lunahouse')) + '</div><div class="code"><span>' + esc(r.code) + '</span></div></div>' +
+        '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Luna')) + '</div><div class="code"><span>' + esc(r.code) + '</span></div></div>' +
         '<div class="stub-bot"><div class="state ' + (good ? 'good' : r.terminal && !good ? 'end' : '') + '">' + esc(r.status_label) + '</div>' +
         '<p class="hint">' + esc(r.hint) + '</p>' +
-        (r.public_note ? '<div class="note"><b>Lời nhắn từ ' + esc(LH.recruiter || 'nhà tuyển dụng') + '</b>' + esc(r.public_note) + '</div>' : '') +
+        (r.public_note ? '<div class="note"><b>' + (r.status === 'rejected' ? 'Feedback từ ' : 'Lời nhắn từ ') + esc(LH.recruiter || 'nhà tuyển dụng') + '</b>' + esc(r.public_note) + '</div>' : '') +
         '<ol class="tl">' + items.map(function (i) {
-          return '<li class="' + i.cls + '">' + esc(i.label) + (i.at ? '<span class="d">' + fmtDate(i.at, true) + '</span>' : '') + '</li>';
+          return '<li class="' + i.cls + '">' + esc(i.label) + (i.at ? '<span class="d">' + fmtDate(i.at, true) + '</span>' : '') + (i.sub ? '<span class="d">' + esc(i.sub) + '</span>' : '') + '</li>';
         }).join('') + '</ol>' +
         '<p class="when">Nộp ngày ' + fmtDate(r.applied_at) + ' · cập nhật ' + fmtDate(r.updated_at, true) + '</p>' +
         '<div class="hero-actions" style="margin-top:18px">' + (r.terminal ? '' : '<button class="btn ghost small" type="button" id="wd">Rút hồ sơ</button>') +

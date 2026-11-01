@@ -1,4 +1,4 @@
-# Lunahouse — web tuyển dụng cá nhân
+# Luna — web tuyển dụng cá nhân (lunahouse.click)
 
 Trang công khai: xem JD, nộp CV, tra cứu tiến độ bằng mã `LH-XXXXXX`.
 Trang admin (`/admin/`): kho CV (AI đọc CV), job, pipeline, matching 2 tầng, nhật ký.

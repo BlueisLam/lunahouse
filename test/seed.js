@@ -62,7 +62,8 @@ module.exports = async function seed(fake) {
   await mkApp(jobs.java, cands[8], 'screening', { match_score: 88, next_action: 'Gọi xác nhận mức lương', next_action_date: day(2) }, 3);
   await mkApp(jobs.java, cands[2], 'new', {}, 0);
   await mkApp(jobs.qa, cands[3], 'interview2', { match_score: 84, next_action: 'Chốt lịch vòng 2', next_action_date: day(3) }, 9);
-  await mkApp(jobs.qa, cands[4], 'rejected', { match_score: 60 }, 12);
+  const rj = await mkApp(jobs.qa, cands[4], 'rejected', { match_score: 60, public_note: 'Cảm ơn bạn đã dành thời gian phỏng vấn. Phần kiểm thử API của bạn rất tốt, nhưng team đang cần người có kinh nghiệm automation sâu hơn với Playwright. Mình sẽ giữ hồ sơ để liên hệ khi có vị trí hợp hơn.' }, 12);
+  for (const [f, t, d] of [['new', 'screening', 11], ['screening', 'submitted', 10], ['submitted', 'interview1', 8], ['interview1', 'rejected', 6]]) await ins('lh_activities', { application_id: rj.id, type: 'status', note: '', meta: { from: f, to: t }, created_at: ago(d) });
   await mkApp(jobs.ba, cands[6], 'offer', { match_score: 79, next_action: 'Theo dõi phản hồi offer', next_action_date: day(5) }, 14);
   await mkApp(null, cands[9], 'new', {}, 0);
   await mkApp(jobs.java, cands[5], 'withdrawn', {}, 8);

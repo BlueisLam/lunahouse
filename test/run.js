@@ -6,7 +6,7 @@ const M = require('../server/_lib/match');
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
-const ip = (n) => ({ 'x-nf-client-connection-ip': '10.0.0.' + n });
+const ip = (n) => ({ 'cf-connecting-ip': '10.0.0.' + n });
 
 let cookie = '', jobId = '', jobSlug = '', appCode = '', appId = '', candId = '';
 const admin = async (action, data = {}) => {
@@ -314,6 +314,22 @@ test('parse: PDF mà không có chữ → báo lỗi rõ; ảnh cần GROQ_VISIO
   assert.strictEqual(r3.ok, true);
   const call = H.calls.find(c => /groq/.test(c.url));
   assert.strictEqual(call.body.model, 'vision-model-x'); assert.strictEqual(call.body.messages[0].content[1].type, 'image_url');
+});
+test('track: bị từ chối → hiện bước dừng; feedback chỉ có khi recruiter nhập', async () => {
+  const ap = await H.invoke(H.F('apply'), { body: applyBody({ full_name: 'Phạm Feedback', email: 'fb@example.com', phone_number: '0966111222' }), headers: ip(30) });
+  assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
+  const row = H.fake.t.lh_applications.find(a => a.code === ap.json.code);
+  const trk = async () => (await H.invoke(H.F('track'), { body: { code: ap.json.code, contact: 'fb@example.com' } })).json;
+  await admin('apps.update', { id: row.id, status: 'screening' });
+  await admin('apps.update', { id: row.id, status: 'interview1' });
+  await admin('apps.update', { id: row.id, status: 'rejected', internal_note: 'Yếu system design' });
+  let t = await trk();
+  assert.strictEqual(t.status, 'rejected'); assert.strictEqual(t.failed_after, 'Vòng phỏng vấn 1');
+  assert.strictEqual(t.public_note, '', 'không có feedback thì không hiện gì');
+  assert.ok(!JSON.stringify(t).includes('system design'), 'ghi chú nội bộ không lộ');
+  await admin('apps.update', { id: row.id, public_note: 'Mình đánh giá cao phần backend của bạn, cần luyện thêm system design.' });
+  t = await trk();
+  assert.match(t.public_note, /system design/);
 });
 test('sniff: PDF có byte rác phía trước vẫn nhận; file lạ vẫn bị từ chối', async () => {
   const U = require('../server/_lib/util');

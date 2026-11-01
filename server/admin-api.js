@@ -264,7 +264,7 @@ A['apps.update'] = async (b) => {
   const cur = must(await db.from('lh_applications').select('*').eq('id', b.id).maybeSingle(), 'app');
   if (!cur) throw new U.HttpError(404, 'Không tìm thấy application.');
   const patch = {};
-  if (b.public_note !== undefined) patch.public_note = U.clean(b.public_note, 600);
+  if (b.public_note !== undefined) patch.public_note = U.clean(b.public_note, 1000);
   if (b.internal_note !== undefined) patch.internal_note = U.clean(b.internal_note, 3000);
   if (b.next_action !== undefined) patch.next_action = U.clean(b.next_action, 120);
   if (b.next_action_date !== undefined) patch.next_action_date = /^\d{4}-\d{2}-\d{2}$/.test(b.next_action_date) ? b.next_action_date : null;

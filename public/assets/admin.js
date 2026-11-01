@@ -1,4 +1,4 @@
-/* Lunahouse admin — kho CV, jobs, pipeline, matching */
+/* Luna admin — kho CV, jobs, pipeline, matching */
 (function () {
   'use strict';
   var $ = function (s, el) { return (el || document).querySelector(s); };
@@ -110,9 +110,9 @@
   function shell() {
     var rail = NAV.map(function (n) { return '<a class="nv" data-nav="' + n[0] + '" href="#/' + n[0] + '"><span class="i">' + n[2] + '</span>' + n[1] + '<span class="ct num" data-ct="' + n[0] + '"></span></a>'; }).join('');
     var tabs = NAV.map(function (n) { return '<a data-nav="' + n[0] + '" href="#/' + n[0] + '"><i>' + n[2] + '</i>' + n[1] + '</a>'; }).join('');
-    $('#app').innerHTML = '<div class="shell"><aside class="rail"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Lunahouse</a>' + rail +
+    $('#app').innerHTML = '<div class="shell"><aside class="rail"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a>' + rail +
       '<span class="sp"></span><a class="nv" href="/" target="_blank" rel="noopener"><span class="i">↗</span>Trang công khai</a><button class="nv" data-act="logout" type="button"><span class="i">⎋</span>Đăng xuất</button></aside>' +
-      '<main class="main"><div class="mtop"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Lunahouse</a><span class="sp"></span><button class="b sm" data-act="logout" type="button">Đăng xuất</button></div><div id="view"></div></main>' +
+      '<main class="main"><div class="mtop"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a><span class="sp"></span><button class="b sm" data-act="logout" type="button">Đăng xuất</button></div><div id="view"></div></main>' +
       '<nav class="tabbar" aria-label="Điều hướng">' + tabs + '</nav></div>';
   }
   function renderNav() {
@@ -393,7 +393,7 @@
       drawer('<div class="dh"><div style="flex:1;min-width:0"><h2>' + esc(c.full_name || '') + '</h2><div class="s">' + esc(r.job ? r.job.title : 'Kho tài năng') + '</div></div><button class="b sm" data-act="close" type="button">Đóng</button></div><div class="db">' +
         '<div class="sec"><div class="codebox"><b>' + esc(a.code) + '</b><button class="b sm" data-act="copy" data-t="' + esc(a.code) + '" type="button">Chép mã</button><button class="b sm" data-act="copy" data-t="' + esc(link) + '" type="button">Chép link tra cứu</button></div></div>' +
         '<div class="sec"><span class="lbl">Trạng thái</span><select class="i2 sel-st" data-k="status">' + S.stages.map(function (s) { return '<option value="' + s.key + '"' + (a.status === s.key ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('') + '</select>' +
-        '<div class="fld" style="margin-top:12px"><label class="lbl">Lời nhắn cho ứng viên (hiện ở trang tra cứu)</label><textarea class="i2" data-k="public_note" placeholder="VD: Lịch phỏng vấn 14h thứ Năm tại văn phòng…">' + esc(a.public_note) + '</textarea></div>' +
+        '<div class="fld" style="margin-top:12px"><label class="lbl">Lời nhắn / feedback cho ứng viên (chỉ hiện ở trang tra cứu khi bạn nhập; nếu bị từ chối sẽ hiện là Feedback)</label><textarea class="i2" data-k="public_note" maxlength="1000" placeholder="VD: Lịch phỏng vấn 14h thứ Năm (online qua Google Meet)… Hoặc khi từ chối: feedback ngắn, lý do chưa phù hợp, gợi ý cải thiện.">' + esc(a.public_note) + '</textarea></div>' +
         '<label class="chk"><input type="checkbox" data-k="notify">Báo cho ứng viên qua email khi lưu</label></div>' +
         '<div class="sec"><span class="lbl">Việc tiếp theo</span><div class="g2">' + field('Làm gì', 'next_action', a.next_action) + '<div class="fld"><label class="lbl">Hạn</label><input class="i2" type="date" data-k="next_action_date" value="' + esc(a.next_action_date || '') + '"></div></div>' +
         '<div class="fld"><label class="lbl">Ghi chú nội bộ (ứng viên không thấy)</label><textarea class="i2" data-k="internal_note">' + esc(a.internal_note) + '</textarea></div>' +

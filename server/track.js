@@ -44,6 +44,13 @@ exports.handler = U.wrap(async (event) => {
   const acts = must(await db.from('lh_activities').select('type,meta,created_at').eq('application_id', app.id).eq('type', 'status').order('created_at', { ascending: true }), 'acts');
   const timeline = (acts || []).map(a => ({ status: a.meta && a.meta.to, label: (BY_KEY[a.meta && a.meta.to] || {}).pub || '', at: a.created_at })).filter(t => t.status);
 
+  // Hồ sơ dừng ở đâu: bước gần nhất trong quy trình trước khi bị từ chối
+  let failed_after = '';
+  if (app.status === 'rejected') {
+    const seen = timeline.filter(t => FLOW.includes(t.status));
+    failed_after = seen.length ? seen[seen.length - 1].label : '';
+  }
+
   const st = BY_KEY[app.status] || BY_KEY.new;
   return U.json(200, {
     code: app.code,
@@ -55,6 +62,7 @@ exports.handler = U.wrap(async (event) => {
     status_label: st.pub,
     hint: st.hint,
     public_note: app.public_note || '',
+    failed_after,
     terminal: TERMINAL.includes(app.status),
     flow: FLOW.map(k => ({ key: k, label: BY_KEY[k].pub })),
     timeline,

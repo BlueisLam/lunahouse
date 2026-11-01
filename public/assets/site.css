@@ -268,3 +268,13 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
   .nav a { white-space: nowrap; padding: 8px 9px; font-size: 14px; }
   .top .logo { font-size: 18px; }
 }
+
+/* Cộng đồng */
+.comm { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.comm-i { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); text-decoration: none; transition: border-color .12s, transform .12s; }
+.comm-i:hover { border-color: var(--accent); transform: translateY(-1px); }
+.comm-i b { display: block; font-weight: 600; line-height: 1.3; }
+.comm-i small { color: var(--muted); font-size: 13px; }
+.ci { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; font: 700 16px/1 var(--display); background: var(--ink); color: var(--bg); }
+.ci.linkedin { background: #0a66c2; color: #fff; } .ci.facebook { background: #1877f2; color: #fff; } .ci.zalo { background: #0068ff; color: #fff; }
+.foot .wrap { flex-wrap: wrap; gap: 6px 16px; }

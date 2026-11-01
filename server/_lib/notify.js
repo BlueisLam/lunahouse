@@ -31,7 +31,7 @@ async function email({ to, subject, html }) {
   const key = process.env.RESEND_API_KEY;
   if (!key || !to) return { skipped: 'email' };
   await postJson('https://api.resend.com/emails', {
-    from: process.env.MAIL_FROM || 'Lunahouse <onboarding@resend.dev>',
+    from: process.env.MAIL_FROM || 'Luna <onboarding@resend.dev>',
     to: [].concat(to), subject, html,
     reply_to: process.env.MAIL_REPLY_TO || undefined,
   }, { authorization: `Bearer ${key}` });
@@ -48,7 +48,7 @@ async function settle(tasks) {
 // ---------- Mẫu email ----------
 function shell(inner) {
   return `<!doctype html><html><body style="margin:0;background:#f4f2fb;padding:24px 12px;font-family:Arial,Helvetica,sans-serif;color:#17143a;line-height:1.55">
-<table role="presentation" width="100%" style="max-width:560px;margin:0 auto"><tr><td style="padding:0 4px 14px;font-weight:700;font-size:16px">&#127769; Lunahouse</td></tr>
+<table role="presentation" width="100%" style="max-width:560px;margin:0 auto"><tr><td style="padding:0 4px 14px;font-weight:700;font-size:16px">&#127769; Luna</td></tr>
 <tr><td style="background:#fff;border:1px solid #dedaf0;border-radius:12px;padding:24px">${inner}</td></tr>
 <tr><td style="padding:14px 4px;color:#7a77a0;font-size:12px">Email tự động từ ${esc(site().replace(/^https?:\/\//, ''))}. Bạn có thể trả lời trực tiếp email này.</td></tr></table></body></html>`;
 }
@@ -88,7 +88,7 @@ function emailReceipt({ app, cand, job }) {
   const track = `${site()}/track?code=${encodeURIComponent(app.code)}`;
   const inner = `<p style="margin:0 0 10px;font-size:18px;font-weight:700">Mình đã nhận hồ sơ của bạn</p>
 <p style="margin:0 0 6px">Chào ${esc(cand.full_name)},</p>
-<p style="margin:0 0 6px">Cảm ơn bạn đã ứng tuyển <b>${esc(job ? job.title : 'vào kho tài năng của Lunahouse')}</b>. Mình sẽ xem hồ sơ trong vòng 1–3 ngày làm việc và liên hệ nếu phù hợp.</p>
+<p style="margin:0 0 6px">Cảm ơn bạn đã ứng tuyển <b>${esc(job ? job.title : 'vào kho tài năng của Luna')}</b>. Mình sẽ xem hồ sơ trong vòng 1–3 ngày làm việc và liên hệ nếu phù hợp.</p>
 ${codeBox(app.code)}
 <p style="margin:0 0 16px">Dùng mã này cùng email hoặc số điện thoại bạn đã nộp để tra cứu tiến độ bất cứ lúc nào.</p>
 <p style="margin:0">${btn(track, 'Tra cứu hồ sơ')}</p>`;
