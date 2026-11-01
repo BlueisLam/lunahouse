@@ -298,3 +298,7 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 .qa-msg p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .qa-meta { margin-bottom: 4px; color: var(--ink-2); }
 @media (max-width: 600px) { .qa-box { padding: 20px 16px; } }
+
+/* Dòng mô tả cạnh logo: làm rõ đây là trang cá nhân, không phải công ty */
+.tagline { margin-right: auto; padding-left: 12px; border-left: 1.5px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
+@media (max-width: 860px) { .tagline { display: none; } }

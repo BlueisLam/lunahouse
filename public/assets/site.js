@@ -50,7 +50,7 @@
     var top = $('#top');
     if (top) {
       top.className = 'top';
-      top.innerHTML = '<div class="wrap"><a class="logo" href="/"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a>' +
+      top.innerHTML = '<div class="wrap"><a class="logo" href="/"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a><span class="tagline">Personal recruiting · IT &amp; Game</span>' +
         '<nav class="nav" aria-label="Điều hướng">' + nav.map(function (n) {
           return '<a href="' + n[0] + '"' + (page === n[2] || (page === 'job' && n[2] === 'home') ? ' aria-current="page"' : '') + '>' + n[1] + '</a>';
         }).join('') + '</nav></div>';
@@ -63,7 +63,7 @@
       [ext(LH.zalo, 'Zalo'), ext(LH.facebook, 'Facebook'), ext(LH.linkedin, 'LinkedIn')].forEach(function (x) { if (x) contact.push(x); });
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
-      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
+      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '. Trang tuyển dụng cá nhân, không phải công ty tuyển dụng.</span>' +
         contact.join('') + '<span class="sp"><a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
