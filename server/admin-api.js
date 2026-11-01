@@ -44,7 +44,7 @@ function candPatch(b) {
 function jobPatch(b) {
   const o = {};
   const S = (k, max) => { if (b[k] !== undefined) o[k] = U.clean(b[k], max); };
-  S('title', 120); S('level', 30); S('salary_text', 80); S('summary', 600);
+  S('title', 120); S('level', 30); S('salary_text', 80); S('location', 120); S('summary', 600);
   if (b.job_type !== undefined) o.job_type = JOB_TYPES.includes(b.job_type) ? b.job_type : 'Full-time';
   ['responsibilities', 'requirements', 'benefits'].forEach(k => { if (b[k] !== undefined) o[k] = String(b[k]).replace(/\r/g, '').slice(0, 6000).trim(); });
   ['must_have_tech', 'nice_to_have_tech', 'domains'].forEach(k => { if (b[k] !== undefined) o[k] = U.toArr(b[k]); });

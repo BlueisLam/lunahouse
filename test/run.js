@@ -86,7 +86,7 @@ test('jobs: tạo job, chỉ job "open" hiện công khai và không lộ id', a
   const draft = (await admin('jobs.save', { title: 'Bản nháp QA', status: 'draft', must_have_tech: 'Playwright' })).job;
   assert.strictEqual(draft.slug, 'ban-nhap-qa');
   const j = (await admin('jobs.save', {
-    title: 'Senior Java Developer', level: 'Senior', salary_text: '45–70 triệu', status: 'open', min_years: 5,
+    title: 'Senior Java Developer', level: 'Senior', salary_text: '45–70 triệu', location: 'Hồ Chí Minh', status: 'open', min_years: 5,
     must_have_tech: 'Java; Spring Boot', nice_to_have_tech: 'Kafka', domains: 'Banking',
     requirements: '5+ năm Java\nSpring Boot', responsibilities: 'Thiết kế API',
   })).job;
@@ -95,6 +95,7 @@ test('jobs: tạo job, chỉ job "open" hiện công khai và không lộ id', a
   const list = await H.invoke(H.F('jobs-public'), { method: 'GET' });
   assert.strictEqual(list.json.jobs.length, 1);
   assert.strictEqual(list.json.jobs[0].title, 'Senior Java Developer');
+  assert.strictEqual(list.json.jobs[0].location, 'Hồ Chí Minh', 'địa điểm hiển thị công khai');
   assert.ok(!('id' in list.json.jobs[0]) && !('status' in list.json.jobs[0]));
   const one = await H.invoke(H.F('jobs-public'), { method: 'GET', query: { slug: jobSlug } });
   assert.strictEqual(one.json.job.title, 'Senior Java Developer');
@@ -144,6 +145,7 @@ test('apply: thành công → lưu, CV vào storage, Telegram + 2 email, AI đ�
   assert.strictEqual(cand.phone_number, '0912 345 678');
   assert.strictEqual(cand.expected_salary, '40 triệu');
   assert.strictEqual(cand.parse_status, 'done');
+  assert.strictEqual(r.job.location, 'Hồ Chí Minh', 'AI lấy địa điểm từ JD');
   assert.ok(cand.technologies.includes('Spring Boot'), 'kỹ năng lấy từ AI');
   assert.strictEqual(cand.total_years_experience, 6);
   assert.strictEqual(cand.address, 'Hà Nội', 'địa chỉ ứng viên nhập được giữ');

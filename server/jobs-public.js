@@ -3,7 +3,7 @@ const { sb, must } = require('./_lib/db');
 const { json, wrap, HttpError } = require('./_lib/util');
 
 // Chỉ trả các cột công khai. Không có id, không có nội dung nội bộ.
-const COLS = 'slug,title,level,job_type,salary_text,summary,responsibilities,requirements,benefits,must_have_tech,nice_to_have_tech,domains,min_years,created_at';
+const COLS = 'slug,title,level,job_type,salary_text,location,summary,responsibilities,requirements,benefits,must_have_tech,nice_to_have_tech,domains,min_years,created_at';
 
 exports.handler = wrap(async (event) => {
   if (event.httpMethod !== 'GET') throw new HttpError(405, 'Method not allowed');

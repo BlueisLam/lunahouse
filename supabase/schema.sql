@@ -21,6 +21,7 @@ create table if not exists lh_jobs (
   level              text default '',                 -- Junior / Mid / Senior / Lead
   job_type           text default 'Full-time',
   salary_text        text default '',                 -- "Thoả thuận", "25–40 triệu"...
+  location           text default '',                 -- "Hồ Chí Minh", "Hà Nội", "Remote"...
   summary            text default '',
   responsibilities   text default '',                 -- mỗi dòng một ý
   requirements       text default '',
@@ -125,3 +126,7 @@ alter table lh_activities   enable row level security;
 insert into storage.buckets (id, name, public)
 values ('lh-cv', 'lh-cv', false)
 on conflict (id) do nothing;
+
+-- Nếu bạn đã chạy schema trước đây (chưa có cột location), chạy thêm dòng này:
+alter table lh_jobs add column if not exists location text default '';
+update storage.buckets set id = id where id = 'lh-cv';

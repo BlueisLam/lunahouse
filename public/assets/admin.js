@@ -418,7 +418,7 @@
       }).join('') : '<div class="none" style="border:0;padding:36px 20px">Chưa có job nào. Bấm "Tạo job", bạn có thể dán nguyên JD để AI điền sẵn form.</div>') + '</div>';
   };
   function openJob(id) {
-    var j = id === 'new' ? { id: '', title: '', level: '', job_type: 'Full-time', salary_text: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '' }
+    var j = id === 'new' ? { id: '', title: '', level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '' }
       : S.jobs.filter(function (x) { return x.id === id; })[0];
     if (!j) return;
     S.open = { type: 'job', id: id }; setHash('job/' + id);
@@ -427,10 +427,10 @@
       (j.id ? '' : '<div class="sec"><span class="lbl">Dán JD để AI điền sẵn</span><textarea class="i2" id="jdtext" placeholder="Dán nguyên nội dung JD (từ khách hàng hoặc nơi khác)…" style="min-height:110px"></textarea><div style="margin-top:8px"><button class="b" data-act="jdai" type="button">Điền tự động bằng AI</button></div></div>') +
       '<div class="sec"><span class="lbl">Thông tin chính</span>' + field('Tên vị trí', 'title', j.title) +
       '<div class="g2"><div class="fld"><label class="lbl">Cấp độ</label>' + sel('level', [['', '—'], ['Intern', 'Intern'], ['Junior', 'Junior'], ['Mid', 'Mid'], ['Senior', 'Senior'], ['Lead', 'Lead']], j.level) + '</div><div class="fld"><label class="lbl">Loại hình</label>' + sel('job_type', ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'].map(function (x) { return [x, x]; }), j.job_type) + '</div></div>' +
-      '<div class="g2">' + field('Mức lương hiển thị', 'salary_text', j.salary_text, { ph: 'VD: 25–40 triệu, Thoả thuận' }) + field('Kinh nghiệm tối thiểu (năm)', 'min_years', j.min_years, { type: 'number', step: '0.5' }) + '</div>' +
+      '<div class="g2">' + field('Mức lương hiển thị', 'salary_text', j.salary_text, { ph: 'VD: 25–40 triệu, Thoả thuận' }) + field('Địa điểm làm việc', 'location', j.location, { ph: 'VD: Hồ Chí Minh, Hà Nội, Remote' }) + '</div><div class="g2">' + field('Kinh nghiệm tối thiểu (năm)', 'min_years', j.min_years, { type: 'number', step: '0.5' }) + '</div>' +
       '<div class="fld"><label class="lbl">Trạng thái</label>' + sel('status', [['draft', 'Nháp (chưa hiện)'], ['open', 'Đang mở (hiện công khai)'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']], j.status) + '</div></div>' +
       '<div class="sec"><span class="lbl">Nội dung JD</span>' + field('Tóm tắt (1–2 câu)', 'summary', j.summary, { area: 1 }) + field('Bạn sẽ làm gì (mỗi ý một dòng)', 'responsibilities', j.responsibilities, { area: 1 }) + field('Bạn cần có (mỗi ý một dòng)', 'requirements', j.requirements, { area: 1 }) + field('Quyền lợi (mỗi ý một dòng)', 'benefits', j.benefits, { area: 1 }) +
-      '<div class="muted" style="font-size:12.5px">Địa điểm và số lượng tuyển không hiển thị. Giờ làm việc 9:00–18:00 T2–T6 và quy trình phỏng vấn 2 vòng offline tự thêm vào trang JD.</div></div>' +
+      '<div class="muted" style="font-size:12.5px">Số lượng tuyển không hiển thị. Giờ làm việc 9:00–18:00 T2–T6 và quy trình phỏng vấn 2 vòng offline tự thêm vào trang JD.</div></div>' +
       '<div class="sec"><span class="lbl">Dùng cho matching</span>' + field('Tech bắt buộc (cách nhau bằng dấu phẩy)', 'must_have_tech', (j.must_have_tech || []).join(', '), { list: 1 }) + field('Tech là điểm cộng', 'nice_to_have_tech', (j.nice_to_have_tech || []).join(', '), { list: 1 }) + field('Domain ưu tiên', 'domains', (j.domains || []).join(', '), { list: 1 }) + '</div></div>' +
       '<div class="df"><button class="b pri" data-act="savejob" data-id="' + esc(j.id) + '" type="button">Lưu job</button>' +
       (j.id ? '<a class="b" href="/jobs/' + esc(j.slug) + '" target="_blank" rel="noopener">Xem trang công khai</a><button class="b" data-act="copy" data-t="' + esc(location.origin + '/jobs/' + j.slug) + '" type="button">Chép link</button><button class="b dng" data-act="deljob" data-id="' + j.id + '" type="button">Xoá</button>' : '') + '</div>');

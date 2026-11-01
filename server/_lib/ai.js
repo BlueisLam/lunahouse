@@ -145,7 +145,7 @@ JOB:
 ${JSON.stringify({
     title: job.title, level: job.level, job_type: job.job_type, min_years: job.min_years,
     must_have: job.must_have_tech, nice_to_have: job.nice_to_have_tech, domains: job.domains,
-    salary: job.salary_text, summary: job.summary, responsibilities: job.responsibilities, requirements: job.requirements,
+    salary: job.salary_text, location: job.location, summary: job.summary, responsibilities: job.responsibilities, requirements: job.requirements,
   })}
 
 ỨNG VIÊN:
@@ -186,6 +186,7 @@ async function jdFromText(text) {
  "level": "Junior | Mid | Senior | Lead | ''",
  "job_type": "Full-time | Part-time | Freelance | Contract | Internship",
  "salary_text": "mức lương nếu JD có ghi, nếu không thì ''",
+ "location": "địa điểm làm việc nếu JD có ghi (tỉnh/thành phố, hoặc Remote / Hybrid), nếu không thì ''",
  "summary": "1–2 câu tóm tắt vị trí, tiếng Việt",
  "responsibilities": "mỗi ý một dòng, tiếng Việt, không ký hiệu đầu dòng",
  "requirements": "mỗi ý một dòng, tiếng Việt, không ký hiệu đầu dòng",
@@ -195,7 +196,7 @@ async function jdFromText(text) {
  "domains": ["lĩnh vực dự án, ví dụ Banking, E-commerce"],
  "min_years": số năm kinh nghiệm tối thiểu (số, 0 nếu không nêu)
 }
-Quy tắc: KHÔNG đưa địa điểm làm việc, số lượng tuyển, tên khách hàng hay thông tin nhận diện công ty vào bất kỳ trường nào. Không bịa thông tin không có trong JD.
+Quy tắc: Địa điểm chỉ đưa vào trường location. KHÔNG đưa số lượng tuyển, tên khách hàng hay thông tin nhận diện công ty vào bất kỳ trường nào. Không bịa thông tin không có trong JD.
 
 --- JD ---
 ${String(text).slice(0, 12000)}`;

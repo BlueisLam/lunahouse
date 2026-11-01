@@ -91,7 +91,7 @@
       box.innerHTML = rows.map(function (j) {
         return '<a class="job" href="/jobs/' + encodeURIComponent(j.slug) + '"><div><h3>' + esc(j.title) + '</h3><div class="meta">' +
           (j.level ? '<span><b>' + esc(j.level) + '</b></span>' : '') + '<span>' + esc(j.job_type || 'Full-time') + '</span>' +
-          '<span>' + esc(j.salary_text || 'Thoả thuận') + '</span></div></div><span class="go" aria-hidden="true">→</span>' +
+          '<span>' + esc(j.salary_text || 'Thoả thuận') + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') + '</div></div><span class="go" aria-hidden="true">→</span>' +
           '<div class="chips">' + chips(j.must_have_tech, 'mono', 6) + '</div></a>';
       }).join('');
     }
@@ -125,7 +125,7 @@
       app.innerHTML =
         '<div class="wrap"><div class="crumb"><a href="/">← Tất cả vị trí</a></div>' +
         '<header class="jd-head">' + (j.level ? '<span class="tag">' + esc(j.level) + '</span>' : '') + '<h1>' + esc(j.title) + '</h1>' +
-        '<div class="jd-meta"><span>' + esc(j.job_type || 'Full-time') + '</span><span>' + esc(j.salary_text || 'Thoả thuận') + '</span>' +
+        '<div class="jd-meta"><span>' + esc(j.job_type || 'Full-time') + '</span><span>' + esc(j.salary_text || 'Thoả thuận') + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') +
         (Number(j.min_years) ? '<span>Từ ' + esc(j.min_years) + ' năm kinh nghiệm</span>' : '') + '</div></header>' +
         '<div class="jd-grid"><div class="jd-body">' +
         (j.summary ? '<section><p style="font-size:18px">' + esc(j.summary) + '</p></section>' : '') +
@@ -138,7 +138,7 @@
         '<aside class="side"><div class="facts"><dl>' +
         ((j.must_have_tech || []).length ? '<div><dt>Công nghệ chính</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
         ((j.domains || []).length ? '<div><dt>Lĩnh vực</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
-        '<div><dt>Mức lương</dt><dd>' + esc(j.salary_text || 'Thoả thuận') + '</dd></div></dl></div>' +
+        '<div><dt>Mức lương</dt><dd>' + esc(j.salary_text || 'Thoả thuận') + '</dd></div>' + (j.location ? '<div><dt>Địa điểm</dt><dd>' + esc(j.location) + '</dd></div>' : '') + '</dl></div>' +
         '<a class="btn block" href="#apply">Ứng tuyển vị trí này</a></aside></div>' +
         '<section class="apply-box" id="apply"><h2>Ứng tuyển</h2><p class="sub">Điền một lần, nhận mã hồ sơ để theo dõi kết quả.</p><div id="form"></div></section></div>' +
         '<div class="stickybar" id="sticky"><a class="btn block" href="#apply">Ứng tuyển vị trí này</a></div>';
