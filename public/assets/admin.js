@@ -100,7 +100,10 @@
 
   /* ---------- khởi động ---------- */
   function boot() {
-    Promise.all([api('bootstrap'), api('candidates.list'), api('apps.list')]).then(function (r) {
+    // Hỏi bootstrap trước: chưa đăng nhập thì chỉ tốn 1 request (không bắn thêm 2 request 401).
+    api('bootstrap').then(function (b) {
+      return Promise.all([api('candidates.list'), api('apps.list')]).then(function (l) { return [b, l[0], l[1]]; });
+    }).then(function (r) {
       S.jobs = r[0].jobs; S.stages = r[0].stages; S.ST = {}; S.stages.forEach(function (s) { S.ST[s.key] = s; });
       S.cands = r[1].candidates.map(prep); S.apps = r[2].applications;
       $('#login').classList.add('hide'); $('#app').classList.remove('hide');

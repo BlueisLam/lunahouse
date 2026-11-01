@@ -12,6 +12,18 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 
 const API = { '/api/jobs': 'jobs-public', '/api/apply': 'apply', '/api/track': 'track', '/api/admin': 'admin-api', '/api/admin-login': 'admin-login' };
 const PAGES = [[/^\/jobs\/.+/, '/job.html'], [/^\/apply\/?$/, '/apply.html'], [/^\/track\/?$/, '/track.html']];
 
+/** Đọc public/_headers để bản chạy thử có đúng CSP/headers như Cloudflare Pages. */
+function staticHeaders(pathname) {
+  const out = {}; let active = false;
+  let txt = ''; try { txt = fs.readFileSync(path.join(PUB, '_headers'), 'utf8'); } catch (e) { return out; }
+  for (const raw of txt.split('\n')) {
+    if (!raw.trim() || raw.trim().startsWith('#')) continue;
+    if (!/^\s/.test(raw)) { const rule = raw.trim(); const re = new RegExp('^' + rule.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'); active = re.test(pathname); continue; }
+    if (active) { const i = raw.indexOf(':'); out[raw.slice(0, i).trim().toLowerCase()] = raw.slice(i + 1).trim(); }
+  }
+  return out;
+}
+
 function readBody(req) { return new Promise(r => { const c = []; req.on('data', d => c.push(d)); req.on('end', () => r(Buffer.concat(c))); }); }
 
 const server = http.createServer(async (req, res) => {
@@ -40,7 +52,7 @@ const server = http.createServer(async (req, res) => {
   if (!file.startsWith(PUB)) { res.writeHead(403); return res.end(); }
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
   if (!fs.existsSync(file)) { res.writeHead(404, { 'content-type': TYPES['.html'] }); return res.end(fs.readFileSync(path.join(PUB, '404.html'))); }
-  res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
+  res.writeHead(200, Object.assign({ 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' }, staticHeaders(url.pathname)));
   res.end(fs.readFileSync(file));
 });
 
