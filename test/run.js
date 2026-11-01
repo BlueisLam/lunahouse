@@ -107,6 +107,7 @@ test('jobs.fromText: AI điền form từ JD dán vào', async () => {
   assert.strictEqual(r.job.title, 'Senior Java Developer');
   assert.deepStrictEqual(r.job.must_have_tech, ['Java', 'Spring Boot']);
   assert.strictEqual(r.job.min_years, 5);
+  assert.strictEqual(r.job.location, 'Hồ Chí Minh', 'AI lấy địa điểm từ JD');
 });
 
 // ---------- nộp hồ sơ ----------
@@ -145,7 +146,6 @@ test('apply: thành công → lưu, CV vào storage, Telegram + 2 email, AI đ�
   assert.strictEqual(cand.phone_number, '0912 345 678');
   assert.strictEqual(cand.expected_salary, '40 triệu');
   assert.strictEqual(cand.parse_status, 'done');
-  assert.strictEqual(r.job.location, 'Hồ Chí Minh', 'AI lấy địa điểm từ JD');
   assert.ok(cand.technologies.includes('Spring Boot'), 'kỹ năng lấy từ AI');
   assert.strictEqual(cand.total_years_experience, 6);
   assert.strictEqual(cand.address, 'Hà Nội', 'địa chỉ ứng viên nhập được giữ');
