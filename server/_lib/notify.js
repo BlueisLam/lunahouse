@@ -31,12 +31,16 @@ async function telegram(html) {
 /** Gửi email qua Resend. */
 async function email({ to, subject, html }) {
   const key = process.env.RESEND_API_KEY;
-  if (!key || !to) return { skipped: 'email' };
+  if (!key || !to) {
+    console.warn('[notify] bỏ qua email "' + subject + '": ' + (!key ? 'thiếu RESEND_API_KEY ở môi trường này' : 'không có địa chỉ người nhận (ADMIN_NOTIFY_EMAIL?)'));
+    return { skipped: 'email' };
+  }
   await postJson('https://api.resend.com/emails', {
     from: process.env.MAIL_FROM || 'Luna <onboarding@resend.dev>',
     to: [].concat(to), subject: envTag() + subject, html,
     reply_to: process.env.MAIL_REPLY_TO || undefined,
   }, { authorization: `Bearer ${key}` });
+  console.log('[notify] đã gửi email "' + subject + '"');
   return { ok: true };
 }
 
