@@ -1,41 +1,48 @@
 'use strict';
-/** Đọc CV của một ứng viên bằng Claude rồi ghi kỹ năng, năm kinh nghiệm, domain... vào lh_candidates. */
+/**
+ * Đọc CV của một ứng viên bằng AI (Groq) rồi ghi kỹ năng, năm kinh nghiệm, domain... vào lh_candidates.
+ * Groq chỉ nhận chữ, nên:
+ *  - DOCX: bóc chữ ngay tại server (mammoth).
+ *  - PDF: trình duyệt admin bóc chữ rồi gửi lên (opts.text).
+ *  - Ảnh / PDF scan: gửi ảnh (opts.images) nếu có đặt GROQ_VISION_MODEL, không thì báo lỗi rõ ràng.
+ */
 const { sb, must, BUCKET } = require('./db');
 const AI = require('./ai');
 const U = require('./util');
 
-async function parseCandidate(id) {
+async function parseCandidate(id, opts = {}) {
   const db = sb();
   try {
     const cand = must(await db.from('lh_candidates').select('*').eq('id', id).maybeSingle(), 'cand');
     if (!cand || !cand.cv_path) throw new Error('Hồ sơ chưa có file CV.');
     must(await db.from('lh_candidates').update({ parse_status: 'pending', parse_error: '' }).eq('id', id), 'pending');
 
-    const dl = await db.storage.from(BUCKET).download(cand.cv_path);
-    if (dl.error) throw new Error('Không tải được file CV: ' + dl.error.message);
-    const buffer = Buffer.from(await dl.data.arrayBuffer());
-    const kind = U.sniffFile(buffer);
-    if (!kind) throw new Error('Không nhận diện được định dạng file CV.');
+    let text = String(opts.text || '').trim();
+    const images = (Array.isArray(opts.images) ? opts.images : []).filter(u => /^data:image\/(png|jpeg);base64,/.test(u)).slice(0, 3);
 
-    let docxText = '', url = '';
-    if (kind === 'docx') {
-      const mammoth = require('mammoth');
-      docxText = (await mammoth.extractRawText({ buffer })).value;
-      if (!docxText.trim()) throw new Error('File DOCX không có nội dung văn bản.');
+    if (text.length < 80 && !images.length) {
+      // Không có chữ từ trình duyệt → thử DOCX ở server
+      const dl = await db.storage.from(BUCKET).download(cand.cv_path);
+      if (dl.error) throw new Error('Không tải được file CV: ' + dl.error.message);
+      const buffer = Buffer.from(await dl.data.arrayBuffer());
+      const kind = U.sniffFile(buffer);
+      if (kind === 'docx') {
+        const mammoth = require('mammoth');
+        text = String((await mammoth.extractRawText({ buffer })).value || '').trim();
+        if (!text) throw new Error('File DOCX không có nội dung văn bản.');
+      } else {
+        throw new Error('Chưa lấy được chữ từ CV. Hãy mở trang admin trên trình duyệt để đọc PDF, hoặc dùng file PDF/DOCX có chữ (không phải ảnh chụp).');
+      }
+    }
+
+    let out;
+    if (text.length >= 80) {
+      out = await AI.llm({ text: AI.cvPrompt(text), max_tokens: 4500, model: AI.MODEL_MAIN() });
     } else {
-      const s = await db.storage.from(BUCKET).createSignedUrl(cand.cv_path, 600);
-      url = (s && s.data && (s.data.signedUrl || s.data.signedURL)) || '';
+      if (!AI.MODEL_VISION()) throw new Error('CV này là ảnh/bản scan, mà chưa đặt GROQ_VISION_MODEL nên AI không đọc được. Dùng PDF có chữ, hoặc nhập tay thông tin.');
+      out = await AI.llm({ text: AI.PARSE_PROMPT, images, max_tokens: 4500, model: AI.MODEL_VISION() });
     }
-
-    let text;
-    try {
-      text = await AI.claude({ content: AI.cvContent({ buffer, kind, docxText, url }), max_tokens: 3000, model: AI.MODEL_MAIN() });
-    } catch (e) {
-      if (!url) throw e;
-      // Claude không tải được link → gửi thẳng file (base64)
-      text = await AI.claude({ content: AI.cvContent({ buffer, kind, docxText }), max_tokens: 3000, model: AI.MODEL_MAIN() });
-    }
-    const parsed = AI.shapeParsed(AI.extractJson(text));
+    const parsed = AI.shapeParsed(AI.extractJson(out));
     const merged = AI.mergeParsed(cand, parsed);
 
     // Admin tải CV lên → có thể trùng người đã có trong kho: đánh dấu để gộp, không tự xoá gì.

@@ -6,7 +6,7 @@ process.env.TELEGRAM_BOT_TOKEN = '123:fake';
 process.env.TELEGRAM_CHAT_ID = '999';
 process.env.RESEND_API_KEY = 're_fake';
 process.env.ADMIN_NOTIFY_EMAIL = 'admin@example.com';
-process.env.ANTHROPIC_API_KEY = 'sk-ant-fake';
+process.env.GROQ_API_KEY = "gsk_fake";
 process.env.SITE_URL = process.env.SITE_URL || 'http://localhost:8888';
 
 const { FakeDB } = require('./fake-supabase');
@@ -31,8 +31,8 @@ const real = global.fetch;
 const resp = (status, body) => ({ ok: status < 400, status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)), json: async () => body });
 
 function claudeReply(body) {
-  const blocks = body.messages[0].content;
-  const text = blocks.map(b => b.text || '').join('\n');
+  const c = body.messages[0].content;
+  const text = typeof c === 'string' ? c : c.map(b => b.text || '').join('\n');
   if (text.includes('You are a CV parser')) {
     if (state.failParse) return null;
     return JSON.stringify(state.cv || DEFAULT_CV);
@@ -50,18 +50,19 @@ function claudeReply(body) {
 global.fetch = async (url, opts = {}) => {
   url = String(url);
   const body = opts.body ? JSON.parse(opts.body) : null;
-  if (/telegram|resend|anthropic/.test(url)) calls.push({ url, body, headers: opts.headers });
+  if (/telegram|resend|groq/.test(url)) calls.push({ url, body, headers: opts.headers });
   if (url.includes('api.telegram.org')) return resp(200, { ok: true });
   if (url.includes('api.resend.com')) return resp(200, { id: 'email_1' });
-  if (url.includes('api.anthropic.com')) {
+  if (url.includes('api.groq.com')) {
     const t = claudeReply(body);
     if (t === null) return resp(500, { error: 'boom' });
-    return resp(200, { content: [{ type: 'text', text: t }] });
+    return resp(200, { choices: [{ message: { role: 'assistant', content: t } }] });
   }
   return real(url, opts);
 };
 
 /** Gọi một handler như adapter Cloudflare sẽ gọi. */
+const CV_TEXT = 'Nguyễn Văn An — Backend Developer. 6 năm kinh nghiệm Java, Spring Boot, PostgreSQL, Kafka. Dự án Banking và E-commerce. '.repeat(3);
 async function invoke(mod, { method = 'POST', body, form, headers = {}, query } = {}) {
   const event = { httpMethod: method, headers: { host: 'localhost:8888', ...headers }, body: body === undefined ? '' : JSON.stringify(body), queryStringParameters: query || null, form: form || null };
   const r = await mod.handler(event, {});
@@ -72,4 +73,4 @@ async function invoke(mod, { method = 'POST', body, form, headers = {}, query } 
 const F = n => require('../server/' + n);
 const fakePdf = (extra = '') => Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n' + extra + '\n%%EOF').toString('base64');
 
-module.exports = { fake, calls, state, invoke, F, fakePdf, DEFAULT_CV };
+module.exports = { CV_TEXT, fake, calls, state, invoke, F, fakePdf, DEFAULT_CV };

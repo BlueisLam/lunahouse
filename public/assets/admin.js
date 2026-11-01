@@ -237,6 +237,63 @@
     next(0);
   }
 
+  // ---------- Bóc chữ từ CV ngay trên trình duyệt (Groq chỉ nhận chữ; cũng đỡ tốn CPU của server) ----------
+  var pdfLib;
+  function loadPdf() {
+    if (!pdfLib) pdfLib = import('/assets/vendor/pdf.min.mjs').then(function (m) { m.GlobalWorkerOptions.workerSrc = '/assets/vendor/pdf.worker.min.mjs'; return m; });
+    return pdfLib;
+  }
+  function pdfExtract(buf) {
+    return loadPdf().then(function (pdfjs) {
+      return pdfjs.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
+    }).then(function (doc) {
+      var n = Math.min(doc.numPages, 8), out = [], i = 1;
+      var step = function () {
+        if (i > n) return Promise.resolve(out.join('\n').replace(/[ \t]+/g, ' ').trim());
+        return doc.getPage(i++).then(function (pg) { return pg.getTextContent(); }).then(function (tc) {
+          var line = '';
+          tc.items.forEach(function (it) { line += it.str + (it.hasEOL ? '\n' : ' '); });
+          out.push(line); return step();
+        });
+      };
+      return step().then(function (text) {
+        if (text.length >= 200) return { text: text.slice(0, 40000) };
+        // PDF scan: render vài trang thành ảnh (chỉ dùng được khi server có GROQ_VISION_MODEL)
+        var imgs = [], j = 1, m = Math.min(doc.numPages, 2);
+        var shot = function () {
+          if (j > m) return Promise.resolve({ text: text, images: imgs });
+          return doc.getPage(j++).then(function (pg) {
+            var vp = pg.getViewport({ scale: 1.4 }), cv = document.createElement('canvas');
+            cv.width = vp.width; cv.height = vp.height;
+            return pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise.then(function () { imgs.push(cv.toDataURL('image/jpeg', 0.7)); return shot(); });
+          });
+        };
+        return shot();
+      });
+    });
+  }
+  function imgExtract(buf, ext) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(new Blob([buf], { type: ext === 'png' ? 'image/png' : 'image/jpeg' })), im = new Image();
+      im.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(im.width, im.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+        cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
+        res({ images: [cv.toDataURL('image/jpeg', 0.75)] });
+      };
+      im.onerror = function () { URL.revokeObjectURL(url); rej(new Error('Không mở được ảnh CV.')); };
+      im.src = url;
+    });
+  }
+  function prepareCv(c) {
+    var ext = (c.cv_filename || '').split('.').pop().toLowerCase();
+    if (ext === 'docx') return Promise.resolve({});
+    return fetch('/api/cv?id=' + encodeURIComponent(c.id), { headers: { 'x-lh': '1' } }).then(function (r) {
+      if (!r.ok) throw new Error('Không tải được CV');
+      return r.arrayBuffer();
+    }).then(function (buf) { return ext === 'pdf' ? pdfExtract(buf) : imgExtract(buf, ext); }).catch(function () { return {}; });
+  }
+
   // Hàng đợi đọc CV: trang admin gọi AI lần lượt từng hồ sơ đang chờ (mỗi lần một hồ sơ).
   function ensurePoll() {
     if (S.parsing) return;
@@ -244,7 +301,7 @@
     var next = S.cands.filter(function (c) { return c.parse_status === 'pending' && !tried[c.id]; })[0];
     if (!next) return;
     S.parsing = true; tried[next.id] = true;
-    api('candidates.parse', { id: next.id }).catch(function () {}).then(function () {
+    prepareCv(next).then(function (extra) { return api('candidates.parse', Object.assign({ id: next.id }, extra)); }).catch(function () {}).then(function () {
       return api('candidates.list');
     }).then(function (r) {
       S.cands = r.candidates.map(prep); renderNav(); paintCands();

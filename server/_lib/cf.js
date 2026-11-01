@@ -15,10 +15,14 @@ function reply(status, obj) {
   return new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...SEC } });
 }
 
+/** Cloudflare đưa biến môi trường qua env; các thư viện bên dưới đọc process.env. */
+function loadEnv(env) {
+  for (const [k, v] of Object.entries(env || {})) if (typeof v === 'string') process.env[k] = v;
+}
+
 async function run(mod, ctx) {
   const { request, env } = ctx;
-  // Cloudflare đưa biến môi trường qua env; các thư viện bên dưới đọc process.env.
-  for (const [k, v] of Object.entries(env || {})) if (typeof v === 'string') process.env[k] = v;
+  loadEnv(env);
 
   const len = Number(request.headers.get('content-length') || 0);
   if (len > MAX_BODY) return reply(413, { error: 'Dữ liệu gửi lên quá lớn.' });
@@ -44,4 +48,4 @@ async function run(mod, ctx) {
   return new Response(r.body || null, { status: r.statusCode, headers: out });
 }
 
-module.exports = { run };
+module.exports = { run, loadEnv };

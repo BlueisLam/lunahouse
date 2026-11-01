@@ -156,7 +156,7 @@ A['candidates.reparse'] = async (b) => {
 /** Đọc CV bằng AI cho một hồ sơ (admin gọi lần lượt từng hồ sơ đang chờ). */
 A['candidates.parse'] = async (b) => {
   if (!b.id) throw new U.HttpError(400, 'Thiếu id.');
-  return await parseCandidate(b.id);
+  return await parseCandidate(b.id, { text: U.clean(b.text, 40000), images: b.images });
 };
 
 A['candidates.merge'] = async (b) => {

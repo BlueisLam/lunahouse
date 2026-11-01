@@ -8,7 +8,7 @@ const seed = require('./seed');
 
 const PORT = Number(process.env.PORT) || 8888;
 const PUB = path.join(__dirname, '..', 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.txt': 'text/plain', '.png': 'image/png' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.txt': 'text/plain', '.png': 'image/png' };
 const API = { '/api/jobs': 'jobs-public', '/api/apply': 'apply', '/api/track': 'track', '/api/admin': 'admin-api', '/api/admin-login': 'admin-login' };
 const PAGES = [[/^\/jobs\/.+/, '/job.html'], [/^\/apply\/?$/, '/apply.html'], [/^\/track\/?$/, '/track.html']];
 
@@ -16,6 +16,14 @@ function readBody(req) { return new Promise(r => { const c = []; req.on('data', 
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/api/cv') {
+    const cv = require('../server/cv');
+    const hdr = new Headers(); Object.entries(req.headers).forEach(([k, v]) => hdr.set(k, String(v)));
+    const r = await cv.stream(new Request('http://localhost' + req.url, { headers: hdr }), async (db, p) => {
+      const b = H.fake.files.get('lh-cv/' + p); return b ? new Response(b) : new Response('', { status: 404 });
+    });
+    res.writeHead(r.status, Object.fromEntries(r.headers)); return res.end(Buffer.from(await r.arrayBuffer()));
+  }
   const fn = API[url.pathname];
   if (fn) {
     const body = await readBody(req);

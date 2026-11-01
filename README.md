@@ -2,7 +2,7 @@
 
 Trang công khai: xem JD, nộp CV, tra cứu tiến độ bằng mã `LH-XXXXXX`.
 Trang admin (`/admin/`): kho CV (AI đọc CV), job, pipeline, matching 2 tầng, nhật ký.
-Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + Storage riêng tư) · Telegram · Resend · Claude API.
+Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + Storage riêng tư) · Telegram · Resend · Groq (AI).
 
 ## Cài đặt (khoảng 30 phút)
 
@@ -14,7 +14,8 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
    - `ADMIN_PASSWORD` (≥ 16 ký tự), `SESSION_SECRET` (`openssl rand -hex 32`)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL`, `MAIL_REPLY_TO`
-   - `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_MODEL_FAST`
+   - `GROQ_API_KEY`, `GROQ_MODEL` (ví dụ `openai/gpt-oss-120b`; tên model Groq đổi thường xuyên, nếu báo lỗi model thì xem danh sách mới ở console.groq.com/docs/models)
+   - Tuỳ chọn: `GROQ_MODEL_FAST`, `GROQ_VISION_MODEL` (đọc CV dạng ảnh)
    - `SITE_URL=https://lunahouse.click`
    - Compatibility flags đã khai trong `wrangler.toml` (`nodejs_compat`). Nếu dashboard không nhận, vào Settings → Functions → Compatibility flags thêm `nodejs_compat`.
 4. **Tên miền**: Pages project → Custom domains → Set up `lunahouse.click`. Nếu domain đã nằm ở Cloudflare thì tự cấu hình; nếu mua ở nơi khác, đổi nameserver sang Cloudflare theo hướng dẫn. HTTPS tự cấp.
@@ -31,8 +32,9 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 ```
 
 ## Cách hoạt động (khác biệt so với server thường)
-- Gói free của Cloudflare giới hạn **10ms CPU mỗi request**, nên: CV được upload dạng multipart (không mã hoá base64 trong function) và AI đọc CV bằng link tạm của Supabase (Claude tự tải file).
-- CV mới nộp có trạng thái `pending`. **AI chỉ đọc CV khi bạn mở trang admin** (trang tự gọi lần lượt từng hồ sơ). Telegram/email báo hồ sơ mới vẫn gửi ngay, dùng thông tin ứng viên nhập.
+- Gói free của Cloudflare giới hạn **10ms CPU mỗi request**, nên CV được upload dạng multipart (không mã hoá base64 trong function).
+- Groq chỉ nhận chữ. **Trình duyệt admin tự bóc chữ từ PDF** (thư viện pdf.js nằm trong `public/assets/vendor/`) rồi gửi lên cho AI. DOCX được bóc chữ ở server. CV dạng ảnh hoặc PDF scan chỉ đọc được nếu bạn đặt `GROQ_VISION_MODEL`; nếu không, hồ sơ báo "Đọc CV lỗi" và bạn nhập tay thông tin.
+- CV mới nộp có trạng thái `pending`. **AI chỉ đọc CV khi bạn mở trang admin (cần mở bằng trình duyệt, vì bước bóc chữ PDF chạy ở đó)** (trang tự gọi lần lượt từng hồ sơ). Telegram/email báo hồ sơ mới vẫn gửi ngay, dùng thông tin ứng viên nhập.
 - File DOCX phải bóc chữ trong function (nặng CPU hơn). Nếu thấy "Đọc CV lỗi" với DOCX, bấm "Đọc lại" hoặc dùng PDF. Gói Workers Paid ($5/tháng) không còn lo giới hạn này.
 - Gói free: 100.000 lượt gọi function mỗi ngày, trang tĩnh không giới hạn.
 

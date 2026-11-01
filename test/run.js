@@ -137,7 +137,7 @@ test('apply: thành công → lưu, CV vào storage, Telegram + 2 email, AI đ�
   appCode = r.json.code;
   candId = H.fake.t.lh_candidates[0].id; appId = H.fake.t.lh_applications[0].id;
   assert.strictEqual(H.fake.t.lh_candidates[0].parse_status, 'pending', 'CV chờ admin cho AI đọc');
-  await require('../server/_lib/parse').parseCandidate(candId);
+  await require('../server/_lib/parse').parseCandidate(candId, { text: H.CV_TEXT });
   const cand = H.fake.t.lh_candidates[0];
   assert.strictEqual(cand.full_name, 'Nguyễn Văn An', 'tên ứng viên nhập không bị AI ghi đè');
   assert.strictEqual(cand.email_norm, 'an.nguyen@example.com');
@@ -238,9 +238,11 @@ test('kho CV: admin tải CV → AI đọc → phát hiện trùng → gộp', a
   const up = await admin('candidates.upload', { name: 'CV_An_moi.pdf', data: H.fakePdf('v2') });
   assert.strictEqual(H.fake.t.lh_candidates.find(c => c.id === up.id).parse_status, 'pending');
   H.calls.length = 0;
-  assert.strictEqual((await admin('candidates.parse', { id: up.id })).status, 'done');
-  const claudeCall = H.calls.find(c => /anthropic/.test(c.url));
-  assert.strictEqual(claudeCall.body.messages[0].content[0].source.type, 'url', 'PDF gửi bằng link tạm, không base64');
+  assert.strictEqual((await admin('candidates.parse', { id: up.id, text: H.CV_TEXT })).status, 'done');
+  const aiCall = H.calls.find(c => /groq/.test(c.url));
+  assert.strictEqual(aiCall.headers.authorization, 'Bearer gsk_fake');
+  assert.strictEqual(typeof aiCall.body.messages[0].content, 'string', 'chỉ gửi chữ, không gửi file');
+  assert.match(aiCall.body.messages[0].content, /Spring Boot/);
   const stub = H.fake.t.lh_candidates.find(c => c.id === up.id);
   assert.strictEqual(stub.parse_status, 'done'); assert.strictEqual(stub.full_name, 'Nguyen Van An', 'tên giả "(đang phân tích)" được thay');
   assert.strictEqual(stub.dup_of, candId, 'đánh dấu trùng với hồ sơ An cũ');
@@ -255,7 +257,7 @@ test('kho CV: admin tải CV → AI đọc → phát hiện trùng → gộp', a
 test('kho CV: AI lỗi → parse_status failed, có thể đọc lại', async () => {
   H.state.failParse = true;
   const up = await admin('candidates.upload', { name: 'hong.pdf', data: H.fakePdf('x') });
-  const pr = await admin('candidates.parse', { id: up.id });
+  const pr = await admin('candidates.parse', { id: up.id, text: H.CV_TEXT });
   let c = H.fake.t.lh_candidates.find(x => x.id === up.id);
   assert.strictEqual(pr.ok, false);
   assert.strictEqual(c.parse_status, 'failed'); assert.ok(c.parse_error);
@@ -263,7 +265,7 @@ test('kho CV: AI lỗi → parse_status failed, có thể đọc lại', async (
   H.state.cv = { ...H.DEFAULT_CV, full_name: 'Trần Thị Bích', email: 'bich@example.com', phone_number: '0933444555', technologies: ['Java', 'Spring Boot'], total_years_experience: 3 };
   await admin('candidates.reparse', { id: up.id });
   assert.strictEqual(H.fake.t.lh_candidates.find(x => x.id === up.id).parse_status, 'pending');
-  await admin('candidates.parse', { id: up.id });
+  await admin('candidates.parse', { id: up.id, text: H.CV_TEXT });
   c = H.fake.t.lh_candidates.find(x => x.id === up.id);
   assert.strictEqual(c.parse_status, 'done'); assert.strictEqual(c.full_name, 'Trần Thị Bích');
   H.state.cv = null;
@@ -298,6 +300,20 @@ test('candidates.get trả link CV tạm + danh sách application', async () => 
   assert.match(r.cv_url, /^https:\/\/fake\.supabase\.co\/sign\//);
   assert.ok(r.applications.length >= 2);
   assert.ok(r.applications.some(a => a.job_title === 'Kho tài năng'));
+});
+test('parse: PDF mà không có chữ → báo lỗi rõ; ảnh cần GROQ_VISION_MODEL', async () => {
+  const up = await admin('candidates.upload', { name: 'scan.pdf', data: H.fakePdf('scan') });
+  const r = await admin('candidates.parse', { id: up.id });
+  assert.strictEqual(r.ok, false); assert.match(r.error, /Chưa lấy được chữ/);
+  const img = 'data:image/jpeg;base64,/9j/4AAQ';
+  const r2 = await admin('candidates.parse', { id: up.id, images: [img] });
+  assert.strictEqual(r2.ok, false); assert.match(r2.error, /GROQ_VISION_MODEL/);
+  process.env.GROQ_VISION_MODEL = 'vision-model-x'; H.calls.length = 0;
+  const r3 = await admin('candidates.parse', { id: up.id, images: [img] });
+  delete process.env.GROQ_VISION_MODEL;
+  assert.strictEqual(r3.ok, true);
+  const call = H.calls.find(c => /groq/.test(c.url));
+  assert.strictEqual(call.body.model, 'vision-model-x'); assert.strictEqual(call.body.messages[0].content[1].type, 'image_url');
 });
 test('upload multipart (như trình duyệt gửi): apply + admin', async () => {
   const mk = (extra) => { const f = new FormData(); Object.entries(extra).forEach(([k, v]) => f.append(k, v)); return f; };

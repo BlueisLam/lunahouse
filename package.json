@@ -17,6 +17,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "pdfjs-dist": "^6.4.299",
     "wrangler": "^4.0.0"
   }
 }

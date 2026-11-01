@@ -1,22 +1,43 @@
 'use strict';
 const { HttpError, toArr, clean } = require('./util');
 
-const MODEL_MAIN = () => process.env.ANTHROPIC_MODEL || 'claude-sonnet-5-5';
-const MODEL_FAST = () => process.env.ANTHROPIC_MODEL_FAST || 'claude-haiku-5-5';
+// Groq (API tương thích OpenAI). Tên model đổi thường xuyên, nên luôn đặt qua biến GROQ_MODEL.
+const MODEL_MAIN = () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const MODEL_FAST = () => process.env.GROQ_MODEL_FAST || MODEL_MAIN();
+const MODEL_VISION = () => process.env.GROQ_VISION_MODEL || '';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function claude({ content, max_tokens = 2000, model, timeoutMs = 100000 }) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new HttpError(400, 'Chưa cấu hình ANTHROPIC_API_KEY trong biến môi trường.');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: model || MODEL_MAIN(), max_tokens, messages: [{ role: 'user', content }] }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`Claude API ${r.status}: ${text.slice(0, 240)}`);
-  const data = JSON.parse(text);
-  return (data.content || []).map(b => (b.type === 'text' ? b.text : '')).join('\n');
+/** Gọi Groq. images: mảng data URL (chỉ khi có GROQ_VISION_MODEL). Tự thử lại khi bị giới hạn tốc độ (429). */
+async function llm({ text, images, max_tokens = 2000, model, timeoutMs = 100000 }) {
+  const key = process.env.GROQ_API_KEY;
+  if (!key) throw new HttpError(400, 'Chưa cấu hình GROQ_API_KEY trong biến môi trường.');
+  const content = images && images.length
+    ? [{ type: 'text', text }, ...images.map(u => ({ type: 'image_url', image_url: { url: u } }))]
+    : text;
+  const mdl = model || MODEL_MAIN();
+  const body = { model: mdl, max_completion_tokens: max_tokens, temperature: 0.2, messages: [{ role: 'user', content }] };
+  if (/^openai\/gpt-oss/.test(mdl)) body.reasoning_effort = 'low';
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const raw = await r.text();
+    if (r.status === 429 && attempt < 2) {
+      const wait = Math.min(Number((r.headers && r.headers.get && r.headers.get('retry-after')) || 5), 10);
+      lastErr = new Error('Groq đang giới hạn tốc độ (429).');
+      await sleep(wait * 1000);
+      continue;
+    }
+    if (!r.ok) throw new Error(`Groq API ${r.status}: ${raw.slice(0, 240)}`);
+    const data = JSON.parse(raw);
+    const msg = data.choices && data.choices[0] && data.choices[0].message;
+    return String((msg && msg.content) || '');
+  }
+  throw lastErr || new Error('Groq không phản hồi.');
 }
 
 /** Lấy JSON object/array đầu tiên trong câu trả lời (model đôi khi bọc ```json). */
@@ -35,7 +56,7 @@ function extractJson(text) {
 }
 
 // ---------- Đọc CV ----------
-const PARSE_PROMPT = `You are a CV parser for a recruiter. Read the attached CV and return ONE JSON object only — no markdown fences, no commentary.
+const PARSE_PROMPT = `You are a CV parser for a recruiter. Read the CV text below and return ONE JSON object only — no markdown fences, no commentary.
 
 Fields and rules (follow strictly):
 full_name: candidate full legal name exactly as written in the CV.
@@ -58,14 +79,9 @@ cv_text: cleaned plain text of the CV, max 3000 characters.
 
 Never invent facts. Use "" / [] / {} when the CV is silent. Output the JSON object only.`;
 
-/** Chuyển file CV thành content block cho Claude. */
-function cvContent({ buffer, kind, docxText, url }) {
-  // Có link tạm (signed URL) thì để Claude tự tải file: đỡ phải mã hoá base64 trong function (tiết kiệm CPU).
-  const src = (mt) => url ? { type: 'url', url } : { type: 'base64', media_type: mt, data: buffer.toString('base64') };
-  if (kind === 'pdf') return [{ type: 'document', source: src('application/pdf') }, { type: 'text', text: PARSE_PROMPT }];
-  if (kind === 'png' || kind === 'jpg') return [{ type: 'image', source: src(kind === 'png' ? 'image/png' : 'image/jpeg') }, { type: 'text', text: PARSE_PROMPT }];
-  if (kind === 'docx') return [{ type: 'text', text: PARSE_PROMPT + '\n\n--- CV ---\n' + String(docxText || '').slice(0, 40000) }];
-  throw new Error('Định dạng CV chưa hỗ trợ: ' + kind);
+/** Ghép prompt đọc CV với nội dung chữ của CV. */
+function cvPrompt(text) {
+  return PARSE_PROMPT + '\n\n--- CV ---\n' + String(text || '').slice(0, 16000);
 }
 
 /** Chuẩn hoá kết quả AI thành các cột của lh_candidates. */
@@ -151,7 +167,7 @@ Quy tắc chấm:
 }
 
 async function scoreBatch(job, cands) {
-  const text = await claude({ content: [{ type: 'text', text: scorePrompt(job, cands) }], max_tokens: 1800, model: MODEL_MAIN(), timeoutMs: 24000 });
+  const text = await llm({ text: scorePrompt(job, cands), max_tokens: 3000, model: MODEL_MAIN(), timeoutMs: 24000 });
   const arr = extractJson(text);
   const by = {};
   (Array.isArray(arr) ? arr : []).forEach(s => { by[String(s.candidate_id)] = s; });
@@ -183,8 +199,8 @@ Quy tắc: KHÔNG đưa địa điểm làm việc, số lượng tuyển, tên 
 
 --- JD ---
 ${String(text).slice(0, 12000)}`;
-  const out = await claude({ content: [{ type: 'text', text: prompt }], max_tokens: 1800, model: MODEL_FAST(), timeoutMs: 24000 });
+  const out = await llm({ text: prompt, max_tokens: 3000, model: MODEL_FAST(), timeoutMs: 24000 });
   return extractJson(out);
 }
 
-module.exports = { claude, extractJson, cvContent, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST };
+module.exports = { llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION };
