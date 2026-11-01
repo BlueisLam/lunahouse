@@ -13,9 +13,9 @@
   var S = {
     jobs: [], cands: [], apps: [], stages: [], ST: {}, tab: 'overview', open: null,
     f: { q: '', tech: [], dom: [], minY: '', openOnly: false, sort: 'new', techLimit: 12, domLimit: 8 },
-    pjob: '', pollN: 0, pollT: null,
+    pjob: '', pollN: 0, pollT: null, unread: 0, threads: [],
   };
-  var NAV = [['overview', 'Tổng quan', '◧'], ['candidates', 'Ứng viên', '▤'], ['pipeline', 'Pipeline', '◈'], ['jobs', 'Việc làm', '▦'], ['matching', 'Matching', '◎']];
+  var NAV = [['overview', 'Tổng quan', '◧'], ['candidates', 'Ứng viên', '▤'], ['pipeline', 'Pipeline', '◈'], ['jobs', 'Việc làm', '▦'], ['matching', 'Matching', '◎'], ['inbox', 'Hỏi đáp', '✉']];
 
   /* ---------- tiện ích ---------- */
   function api(action, data) {
@@ -104,7 +104,7 @@
     api('bootstrap').then(function (b) {
       return Promise.all([api('candidates.list'), api('apps.list')]).then(function (l) { return [b, l[0], l[1]]; });
     }).then(function (r) {
-      S.jobs = r[0].jobs; S.stages = r[0].stages; S.ST = {}; S.stages.forEach(function (s) { S.ST[s.key] = s; });
+      S.jobs = r[0].jobs; S.unread = r[0].unread_threads || 0; S.stages = r[0].stages; S.ST = {}; S.stages.forEach(function (s) { S.ST[s.key] = s; });
       S.cands = r[1].candidates.map(prep); S.apps = r[2].applications;
       $('#login').classList.add('hide'); $('#app').classList.remove('hide');
       shell(); route(); ensurePoll();
@@ -115,7 +115,7 @@
   }
   function refreshApps() { return api('apps.list').then(function (r) { S.apps = r.applications; renderNav(); }); }
   function refreshCands() { return api('candidates.list').then(function (r) { S.cands = r.candidates.map(prep); renderNav(); ensurePoll(); }); }
-  function refreshJobs() { return api('bootstrap').then(function (r) { S.jobs = r.jobs; }); }
+  function refreshJobs() { return api('bootstrap').then(function (r) { S.jobs = r.jobs; S.unread = r.unread_threads || 0; renderNav(); }); }
 
   function shell() {
     var rail = NAV.map(function (n) { return '<a class="nv" data-nav="' + n[0] + '" href="#/' + n[0] + '"><span class="i">' + n[2] + '</span>' + n[1] + '<span class="ct num" data-ct="' + n[0] + '"></span></a>'; }).join('');
@@ -127,7 +127,7 @@
   }
   function renderNav() {
     $$('[data-nav]').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-nav') === S.tab); });
-    var ct = { candidates: S.cands.length, pipeline: activeApps().length };
+    var ct = { candidates: S.cands.length, pipeline: activeApps().length, inbox: S.unread > 0 ? S.unread : null };
     $$('[data-ct]').forEach(function (el) { var v = ct[el.getAttribute('data-ct')]; el.textContent = v == null ? '' : v; });
   }
 
@@ -139,7 +139,7 @@
     var tab = a === 'candidate' ? 'candidates' : a === 'app' ? 'pipeline' : a === 'job' ? 'jobs' : a;
     if (!VIEWS[tab]) tab = 'overview';
     S.tab = tab; closeLayer(true); renderNav(); VIEWS[tab]();
-    if (id) { if (a === 'candidate' || a === 'candidates') openCandidate(id); else if (a === 'app') openApp(id); else if (a === 'job' || a === 'jobs') openJob(id); }
+    if (id) { if (a === 'inbox') openThread(id); else if (a === 'candidate' || a === 'candidates') openCandidate(id); else if (a === 'app') openApp(id); else if (a === 'job' || a === 'jobs') openJob(id); }
   }
   window.addEventListener('hashchange', function () { if ($('#app') && !$('#app').classList.contains('hide')) route(); });
 
@@ -505,6 +505,43 @@
     next().then(function () { toast('Đã thêm ' + made + ' người vào pipeline'); return refreshApps(); }).then(paintMatch).catch(fail).then(function () { btn.disabled = false; });
   }
 
+
+  /* ---------- hỏi đáp dưới job ---------- */
+  VIEWS.inbox = function () {
+    $('#view').innerHTML = '<div class="ph"><h1>Hỏi đáp</h1></div><div class="box" id="thlist"><div class="none">Đang tải…</div></div>';
+    loadThreads();
+  };
+  function loadThreads() {
+    return api('threads.list').then(function (r) {
+      S.threads = r.threads; S.unread = r.threads.filter(function (t) { return t.unread_admin; }).length; renderNav();
+      var el = $('#thlist'); if (!el) return;
+      el.innerHTML = r.threads.length ? r.threads.map(function (t) {
+        return '<div class="li' + (t.unread_admin ? ' unread' : '') + '" data-act="thread" data-id="' + t.id + '"><span class="sdot"></span><div class="tx"><div class="t1">' + esc(t.author_name) + ' · ' + esc(t.job_title) + '</div><div class="t2">' + (t.last_from === 'recruiter' ? 'Bạn: ' : '') + esc(t.last_body) + '</div></div>' +
+          (t.is_public ? '<span class="stt open">Công khai</span>' : '') + '<span class="dt num">' + ago(t.updated_at) + '</span></div>';
+      }).join('') : '<div class="none">Chưa có câu hỏi nào. Ứng viên đặt câu hỏi ở cuối trang mỗi job, bạn sẽ nhận thông báo Telegram.</div>';
+    }).catch(fail);
+  }
+  function openThread(id) {
+    S.open = { type: 'thread', id: id }; setHash('inbox/' + id);
+    return api('threads.get', { id: id }).then(function (r) {
+      var t = r.thread;
+      var bubbles = r.messages.map(function (m) {
+        return '<div class="msg ' + (m.sender === 'recruiter' ? 'me' : 'them') + '"><div class="who">' + (m.sender === 'recruiter' ? 'Bạn' : esc(t.author_name)) + ' · ' + dt(m.created_at) + '</div><div class="bd">' + esc(m.body) + '</div></div>';
+      }).join('');
+      drawer('<div class="dh"><div style="flex:1;min-width:0"><h2>' + esc(t.author_name) + '</h2><div class="s">' + esc(t.job_title) + ' · <a href="mailto:' + esc(t.author_email) + '">' + esc(t.author_email) + '</a></div></div><button class="b sm" data-act="close" type="button">Đóng</button></div><div class="db">' +
+        '<div class="sec"><span class="lbl">Hiển thị</span><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="stt ' + (t.is_public ? 'open' : 'draft') + '">' + (t.is_public ? 'Đang công khai dưới job' : 'Riêng tư (chỉ bạn và ứng viên)') + '</span>' +
+        '<button class="b sm" data-act="tpub" data-id="' + t.id + '" data-v="' + (t.is_public ? '0' : '1') + '" type="button">' + (t.is_public ? 'Gỡ công khai' : 'Đăng công khai') + '</button></div>' +
+        '<div class="muted" style="font-size:12.5px;margin-top:6px">Khi công khai, người xem chỉ thấy tên gọi (VD "' + esc(String(t.author_name).trim().split(/\s+/).pop()) + '") và nội dung hỏi đáp, không thấy email.</div></div>' +
+        '<div class="sec"><span class="lbl">Hội thoại</span><div class="thread">' + bubbles + '</div></div>' +
+        '<div class="sec"><span class="lbl">Trả lời</span><textarea class="i2" id="treply" maxlength="1500" placeholder="Nội dung trả lời. Ứng viên sẽ nhận email kèm link để xem và nhắn tiếp."></textarea>' +
+        '<label class="chk"><input type="checkbox" id="tpubnow"' + (t.is_public ? ' disabled checked' : '') + '>Đăng công khai cùng lúc</label></div></div>' +
+        '<div class="df"><button class="b pri" data-act="tsend" data-id="' + t.id + '" type="button">Gửi trả lời</button><button class="b dng" data-act="tdel" data-id="' + t.id + '" type="button">Xoá</button></div>');
+      var tb = $('.drawer .thread'); if (tb) tb.scrollTop = tb.scrollHeight;
+      return loadThreadsIfOpen();
+    }).catch(fail);
+  }
+  function loadThreadsIfOpen() { return S.tab === 'inbox' && $('#thlist') ? loadThreads() : refreshJobs().catch(function () {}); }
+
   /* ---------- sự kiện ---------- */
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-act],[data-tech],[data-dom]'); if (!t) return;
@@ -514,6 +551,16 @@
     switch (act) {
       case 'logout': return logout();
       case 'close': return closeLayer();
+      case 'thread': return openThread(id);
+      case 'tpub': return api('threads.publish', { id: id, is_public: t.getAttribute('data-v') === '1' }).then(function (r) { toast(r.is_public ? 'Đã đăng công khai dưới job' : 'Đã gỡ khỏi trang công khai'); return openThread(id); }).catch(fail);
+      case 'tsend': {
+        var body = $('#treply').value.trim(); if (body.length < 2) return toast('Bạn chưa nhập nội dung trả lời.', true);
+        t.disabled = true;
+        return api('threads.reply', { id: id, body: body, publish: !!($('#tpubnow') && $('#tpubnow').checked && !$('#tpubnow').disabled) }).then(function () { toast('Đã gửi, ứng viên nhận email'); return openThread(id); }).catch(function (e) { t.disabled = false; fail(e); });
+      }
+      case 'tdel':
+        if (!confirm('Xoá cuộc hội thoại này? Không hoàn tác được.')) return;
+        return api('threads.delete', { id: id }).then(function () { toast('Đã xoá'); closeLayer(); return loadThreadsIfOpen(); }).catch(fail);
       case 'cand': return openCandidate(id);
       case 'app': return openApp(id);
       case 'job': return openJob(id);

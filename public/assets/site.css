@@ -280,3 +280,21 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 .foot .wrap { flex-wrap: wrap; gap: 6px 16px; }
 
 .devstrip { background: #c2410c; color: #fff; text-align: center; font: 600 13px/1 var(--mono); padding: 8px 12px; letter-spacing: .02em; }
+
+/* hỏi đáp */
+.qa-box { margin-top: 48px; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; scroll-margin-top: 20px; }
+.qa-box > h2 { font-size: 26px; margin-bottom: 6px; }
+.qa-box .sub { color: var(--muted); margin-bottom: 20px; }
+.qa-h { font-size: 17px; margin: 18px 0 12px; }
+.qa-list { display: grid; gap: 14px; margin-bottom: 8px; }
+.qa-thread { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--bg, #fff); }
+.qa-thread.private { margin-top: 12px; }
+.qa-who { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.qa-msg { padding: 8px 0; }
+.qa-msg + .qa-msg { border-top: 1px dashed var(--line); }
+.qa-msg b { font-size: 14px; display: block; margin-bottom: 2px; }
+.qa-msg b span { font-weight: 400; color: var(--muted); font-size: 12.5px; margin-left: 6px; }
+.qa-msg.rec b { color: var(--accent); }
+.qa-msg p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.qa-meta { margin-bottom: 4px; color: var(--ink-2); }
+@media (max-width: 600px) { .qa-box { padding: 20px 16px; } }

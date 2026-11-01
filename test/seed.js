@@ -67,5 +67,12 @@ module.exports = async function seed(fake) {
   await mkApp(jobs.ba, cands[6], 'offer', { match_score: 79, next_action: 'Theo dõi phản hồi offer', next_action_date: day(5) }, 14);
   await mkApp(null, cands[9], 'new', {}, 0);
   await mkApp(jobs.java, cands[5], 'withdrawn', {}, 8);
+  // Hỏi đáp mẫu: 1 thread công khai (đã trả lời), 1 thread riêng tư chưa đọc
+  const tk = () => require('crypto').randomBytes(18).toString('hex');
+  const t1 = await ins('lh_threads', { job_id: jobs.java.id, token: tk(), author_name: 'Đỗ Minh Quân', author_email: 'quan.do@example.com', is_public: true, unread_admin: false, last_from: 'recruiter', created_at: ago(3), updated_at: ago(2) });
+  await ins('lh_messages', { thread_id: t1.id, sender: 'candidate', body: 'Vị trí này có được làm remote một vài ngày trong tuần không ạ?', created_at: ago(3) });
+  await ins('lh_messages', { thread_id: t1.id, sender: 'recruiter', body: 'Chào bạn, team làm hybrid: 3 ngày tại văn phòng, 2 ngày remote. Bạn cần thêm thông tin gì cứ hỏi mình nhé.', created_at: ago(2) });
+  const t2 = await ins('lh_threads', { job_id: jobs.qa.id, token: tk(), author_name: 'Vũ Thanh Hà', author_email: 'ha.vu@example.com', is_public: false, unread_admin: true, last_from: 'candidate', created_at: ago(0, 2), updated_at: ago(0, 2) });
+  await ins('lh_messages', { thread_id: t2.id, sender: 'candidate', body: 'Em mới có 2 năm kinh nghiệm automation, em có nên ứng tuyển vị trí này không ạ?', created_at: ago(0, 2) });
   return { jobs, cands };
 };

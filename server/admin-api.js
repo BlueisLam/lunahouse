@@ -91,7 +91,12 @@ const A = {};
 
 A.bootstrap = async () => {
   const jobs = must(await sb().from('lh_jobs').select('*').order('created_at', { ascending: false }), 'jobs');
-  return { jobs, stages: STAGES, terminal: TERMINAL };
+  let unread = 0;
+  try {
+    const r = await sb().from('lh_threads').select('id', { count: 'exact', head: true }).eq('unread_admin', true);
+    unread = r.error ? 0 : (r.count || 0);
+  } catch (e) { unread = 0; }
+  return { jobs, stages: STAGES, terminal: TERMINAL, unread_threads: unread };
 };
 
 A['candidates.list'] = async () => ({ candidates: await allCandidates() });
@@ -323,11 +328,67 @@ A['match.score'] = async (b) => {
   return { results: await AI.scoreBatch(job, cands) };
 };
 
+
+// ---------- hỏi đáp dưới job ----------
+const THREAD_MSG_MAX = 1500;
+
+A['threads.list'] = async () => {
+  const db = sb();
+  const threads = must(await db.from('lh_threads').select('id,job_id,author_name,author_email,is_public,unread_admin,last_from,created_at,updated_at').order('updated_at', { ascending: false }).limit(150), 'threads');
+  if (!threads.length) return { threads: [] };
+  const jobs = must(await db.from('lh_jobs').select('id,title,slug'), 'jobs');
+  const jmap = {}; jobs.forEach(j => { jmap[j.id] = j; });
+  const msgs = must(await db.from('lh_messages').select('thread_id,sender,body,created_at').in('thread_id', threads.map(t => t.id)).order('created_at', { ascending: false }).limit(1000), 'messages');
+  const last = {}, cnt = {};
+  msgs.forEach(m => { cnt[m.thread_id] = (cnt[m.thread_id] || 0) + 1; if (!last[m.thread_id]) last[m.thread_id] = m; });
+  return {
+    threads: threads.map(t => ({ ...t, job_title: (jmap[t.job_id] || {}).title || '(job đã xoá)', last_body: last[t.id] ? last[t.id].body.slice(0, 160) : '', count: cnt[t.id] || 0 })),
+  };
+};
+
+A['threads.get'] = async (b) => {
+  const db = sb();
+  const t = must(await db.from('lh_threads').select('*').eq('id', b.id).maybeSingle(), 'thread');
+  if (!t) throw new U.HttpError(404, 'Không tìm thấy hội thoại.');
+  const job = must(await db.from('lh_jobs').select('id,title,slug').eq('id', t.job_id).maybeSingle(), 'job');
+  const messages = must(await db.from('lh_messages').select('id,sender,body,created_at').eq('thread_id', t.id).order('created_at', { ascending: true }), 'messages');
+  if (t.unread_admin) { must(await db.from('lh_threads').update({ unread_admin: false }).eq('id', t.id), 'read'); t.unread_admin = false; }
+  const { token, ...safe } = t;
+  return { thread: { ...safe, job_title: job ? job.title : '(job đã xoá)', job_slug: job ? job.slug : '' }, messages };
+};
+
+A['threads.reply'] = async (b) => {
+  const db = sb();
+  const t = must(await db.from('lh_threads').select('*').eq('id', b.id).maybeSingle(), 'thread');
+  if (!t) throw new U.HttpError(404, 'Không tìm thấy hội thoại.');
+  const body = U.clean(b.body, THREAD_MSG_MAX).replace(/\r/g, '');
+  if (body.length < 2) throw new U.HttpError(400, 'Bạn chưa nhập nội dung trả lời.');
+  must(await db.from('lh_messages').insert({ thread_id: t.id, sender: 'recruiter', body }), 'reply');
+  const patch = { unread_admin: false, last_from: 'recruiter' };
+  if (b.publish === true) patch.is_public = true;
+  must(await db.from('lh_threads').update(patch).eq('id', t.id), 'thread update');
+  const job = must(await db.from('lh_jobs').select('title').eq('id', t.job_id).maybeSingle(), 'job');
+  await N.settle([N.emailThreadReply({ thread: t, job, body, base: b._base })]);
+  return { ok: true, is_public: b.publish === true ? true : t.is_public };
+};
+
+A['threads.publish'] = async (b) => {
+  const db = sb();
+  must(await db.from('lh_threads').update({ is_public: !!b.is_public }).eq('id', b.id), 'publish');
+  return { ok: true, is_public: !!b.is_public };
+};
+
+A['threads.delete'] = async (b) => {
+  must(await sb().from('lh_threads').delete().eq('id', b.id), 'delete thread');
+  return { ok: true };
+};
+
 // ---------- handler ----------
 exports.handler = U.wrap(async (event) => {
   if (event.httpMethod !== 'POST') throw new U.HttpError(405, 'Method not allowed');
   requireAdmin(event);
   const b = await U.readInput(event, { fileField: 'file', maxChars: 6_500_000 });
+  b._base = N.baseUrl(event);
   const fn = Object.prototype.hasOwnProperty.call(A, b.action) ? A[b.action] : null;
   if (!fn) throw new U.HttpError(400, 'Hành động không hợp lệ.');
   return U.json(200, await fn(b));

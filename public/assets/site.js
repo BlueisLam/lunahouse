@@ -149,12 +149,18 @@
         ((j.domains || []).length ? '<div><dt>Lĩnh vực</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
         '<div><dt>Mức lương</dt><dd>' + esc(j.salary_text || 'Thoả thuận') + '</dd></div>' + (j.location ? '<div><dt>Địa điểm</dt><dd>' + esc(j.location) + '</dd></div>' : '') + '</dl></div>' +
         '<a class="btn block" href="#apply">Ứng tuyển vị trí này</a></aside></div>' +
+        '<section class="qa-box" id="qa"><h2>Hỏi đáp</h2><p class="sub">Có điều chưa rõ về vị trí này? Cứ hỏi, mình trả lời qua email. Câu hỏi chỉ mình và bạn xem được, trừ khi mình đăng công khai để các bạn khác cùng tham khảo.</p><div id="qalist"></div><div id="qaform"></div></section>' +
         '<section class="apply-box" id="apply"><h2>Ứng tuyển</h2><p class="sub">Điền một lần, nhận mã hồ sơ để theo dõi kết quả.</p><div id="form"></div></section></div>' +
         '<div class="stickybar" id="sticky"><a class="btn block" href="#apply">Ứng tuyển vị trí này</a></div>';
       document.body.classList.add('has-sticky');
       mountApply($('#form'), j);
+      mountQa(j);
       var form = $('#apply'), bar = $('#sticky');
-      if ('IntersectionObserver' in window) new IntersectionObserver(function (en) { bar.classList.toggle('gone', en[0].isIntersecting); }, { threshold: 0.05 }).observe(form);
+      if ('IntersectionObserver' in window) {
+        var seen = {};
+        var io = new IntersectionObserver(function (en) { en.forEach(function (x) { seen[x.target.id] = x.isIntersecting; }); bar.classList.toggle('gone', !!(seen.apply || seen.qa)); }, { threshold: 0.05 });
+        io.observe(form); if ($('#qa')) io.observe($('#qa'));
+      }
     }).catch(function (e) {
       app.innerHTML = '<div class="wrap"><div class="empty" style="padding-top:64px"><h3>' + (e.status === 404 ? 'Vị trí này đã đóng hoặc không tồn tại' : 'Không tải được JD') + '</h3><p>' +
         (e.status === 404 ? 'Có thể vị trí đã tuyển xong. Bạn xem các vị trí đang mở hoặc gửi CV vào kho tài năng nhé.' : 'Bạn thử tải lại trang.') + '</p><p style="margin-top:20px"><a class="btn" href="/">Xem vị trí đang mở</a></p></div></div>';
@@ -303,6 +309,64 @@
     });
   }
 
+
+  /* ---------- hỏi đáp dưới job ---------- */
+  function threadHtml(t) {
+    return '<article class="qa-thread"><div class="qa-who">' + esc(t.name || 'Ẩn danh') + ' · ' + fmtDate(t.at) + '</div>' + t.messages.map(function (m) {
+      return '<div class="qa-msg ' + (m.from === 'recruiter' ? 'rec' : 'cand') + '"><b>' + (m.from === 'recruiter' ? esc(LH.recruiter || 'Luna') : esc(t.name || 'Bạn')) + '</b><p>' + esc(m.body) + '</p></div>';
+    }).join('') + '</article>';
+  }
+  function mountQa(job) {
+    var list = $('#qalist'), box = $('#qaform'); if (!list || !box) return;
+    api('/api/questions?job=' + encodeURIComponent(job.slug)).then(function (r) {
+      list.innerHTML = r.threads && r.threads.length ? '<div class="qa-list">' + r.threads.map(threadHtml).join('') + '</div>' : '';
+    }).catch(function () {});
+    box.innerHTML =
+      '<form id="qf" novalidate><h3 class="qa-h">Đặt câu hỏi</h3><div id="qerr" role="alert" class="alert err hide"></div>' +
+      '<div class="row2"><div class="field"><label for="q-name">Tên của bạn</label><input class="in" id="q-name" name="name" autocomplete="name" maxlength="80" required></div>' +
+      '<div class="field"><label for="q-email">Email</label><input class="in" id="q-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required><span class="help">Mình trả lời qua email này. Email không hiển thị công khai.</span></div></div>' +
+      '<div class="field"><label for="q-body">Câu hỏi</label><textarea class="in" id="q-body" name="body" maxlength="1500" placeholder="VD: Vị trí này có làm remote được không?" required></textarea></div>' +
+      '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
+      '<button class="btn" type="submit" id="qsub">Gửi câu hỏi</button></form>';
+    var form = $('#qf'), err = $('#qerr');
+    form.addEventListener('submit', function (e) {
+      e.preventDefault(); err.classList.add('hide');
+      var btn = $('#qsub'); btn.disabled = true; btn.textContent = 'Đang gửi…';
+      api('/api/questions', { action: 'ask', job_slug: job.slug, name: form.elements.name.value, email: form.elements.email.value, body: form.elements.body.value, website: form.elements.website.value }).then(function (r) {
+        box.innerHTML = '<div class="alert info" role="status"><b>Mình đã nhận câu hỏi của bạn.</b><br>Mình đã gửi email kèm link riêng để bạn xem câu trả lời và nhắn tiếp. Nếu chưa thấy, bạn kiểm tra mục Spam, hoặc <a href="' + esc(r.link || '#') + '">mở hội thoại ngay</a>.</div>';
+      }).catch(function (e2) {
+        err.textContent = e2.message; err.classList.remove('hide'); btn.disabled = false; btn.textContent = 'Gửi câu hỏi';
+      });
+    });
+  }
+
+  /* ---------- xem hội thoại riêng (link trong email) ---------- */
+  function questionPage() {
+    var out = $('#qout'), token = new URLSearchParams(location.search).get('t') || '';
+    function load() {
+      return api('/api/questions?t=' + encodeURIComponent(token)).then(function (r) {
+        var j = r.job;
+        out.innerHTML = '<div class="qa-meta">' + (j ? 'Vị trí: <a href="/jobs/' + esc(j.slug) + '">' + esc(j.title) + '</a>' : '') + '</div>' +
+          '<div class="qa-thread private">' + r.messages.map(function (m) {
+            return '<div class="qa-msg ' + (m.from === 'recruiter' ? 'rec' : 'cand') + '"><b>' + (m.from === 'recruiter' ? esc(LH.recruiter || 'Luna') : 'Bạn') + ' <span>' + fmtDate(m.at, true) + '</span></b><p>' + esc(m.body) + '</p></div>';
+          }).join('') + '</div>' +
+          '<p class="help" style="margin:8px 0 18px">' + (r.is_public ? 'Hội thoại này đang được hiển thị công khai dưới job (chỉ có tên gọi của bạn, không có email).' : 'Hội thoại này chỉ có bạn và mình xem được.') + '</p>' +
+          '<form id="qr" novalidate><div id="qrerr" role="alert" class="alert err hide"></div><div class="field"><label for="qr-body">Nhắn tiếp</label><textarea class="in" id="qr-body" maxlength="1500" placeholder="Viết thêm câu hỏi hoặc phản hồi…"></textarea></div>' +
+          '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button class="btn" type="submit" id="qrsub">Gửi</button></form>';
+        var f = $('#qr');
+        f.addEventListener('submit', function (e) {
+          e.preventDefault(); var er = $('#qrerr'), b = $('#qrsub'); er.classList.add('hide'); b.disabled = true; b.textContent = 'Đang gửi…';
+          api('/api/questions', { action: 'say', token: token, body: $('#qr-body').value, website: f.elements.website.value }).then(load).catch(function (e2) {
+            er.textContent = e2.message; er.classList.remove('hide'); b.disabled = false; b.textContent = 'Gửi';
+          });
+        });
+      }).catch(function (e) {
+        out.innerHTML = '<div class="empty"><h3>' + (e.status === 404 ? 'Không tìm thấy hội thoại' : 'Không tải được') + '</h3><p>' + esc(e.message) + '</p></div>';
+      });
+    }
+    load();
+  }
+
   function privacyPage() {
     var el = $('#contact');
     if (el) el.innerHTML = LH.contactEmail ? '<a href="mailto:' + esc(LH.contactEmail) + '">' + esc(LH.contactEmail) + '</a>' : 'cách trả lời trực tiếp email xác nhận mà bạn nhận được khi nộp hồ sơ';
@@ -315,6 +379,7 @@
     else if (p === 'job') jobPage();
     else if (p === 'apply') applyPage();
     else if (p === 'track') trackPage();
+    else if (p === 'question') questionPage();
     else if (p === 'privacy') privacyPage();
   });
 })();

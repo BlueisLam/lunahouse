@@ -113,4 +113,51 @@ ${app.public_note ? `<p style="margin:12px 0;padding:10px 12px;background:#f4f2f
   return email({ to: cand.email, subject: `[${app.code}] ${st.pub}`, html: shell(inner) });
 }
 
-module.exports = { telegram, email, settle, notifyNewApplication, emailReceipt, emailStatus, site };
+
+/**
+ * Địa chỉ gốc để dựng link trong email. Ưu tiên host của chính request (để bản dev gửi link dev,
+ * không trỏ nhầm sang production); host lạ thì dùng SITE_URL.
+ */
+function baseUrl(event) {
+  const h = event && event.headers || {};
+  const host = String(h['x-forwarded-host'] || h.host || '').toLowerCase().split(',')[0].trim();
+  if (/^([a-z0-9-]+\.)*(lunahouse\.click|pages\.dev)$/.test(host)) return 'https://' + host;
+  if (/^localhost(:\d+)?$/.test(host)) return 'http://' + host;
+  return site();
+}
+const threadLink = (base, thread) => `${base}/q?t=${encodeURIComponent(thread.token)}`;
+const quote = txt => `<p style="margin:12px 0;padding:10px 12px;background:#f4f2fb;border-radius:8px;white-space:pre-wrap">${esc(txt)}</p>`;
+
+/** Ứng viên đặt câu hỏi / nhắn thêm → Telegram cho admin. */
+function notifyThreadMessage({ thread, job, body, first, base }) {
+  const link = `${base || site()}/admin/#/inbox/${thread.id}`;
+  return settle([telegram([
+    first ? '❓ <b>Câu hỏi mới dưới job</b>' : '💬 <b>Ứng viên nhắn thêm</b>',
+    `<b>${esc(thread.author_name)}</b> (${esc(thread.author_email)}) → ${esc(job ? job.title : '')}`,
+    esc(String(body).slice(0, 500)),
+    `<a href="${esc(link)}">Trả lời trong admin</a>`,
+  ].join('\n'))]);
+}
+
+/** Email cho ứng viên sau khi gửi câu hỏi: kèm link riêng để xem hội thoại. */
+function emailThreadReceipt({ thread, job, body, base }) {
+  const link = threadLink(base || site(), thread);
+  const inner = `<p style="margin:0 0 10px;font-size:18px;font-weight:700">Mình đã nhận câu hỏi của bạn</p>
+<p style="margin:0 0 6px">Chào ${esc(thread.author_name)}, bạn hỏi về vị trí <b>${esc(job ? job.title : '')}</b>:</p>
+${quote(body)}
+<p style="margin:0 0 6px">Mình sẽ trả lời sớm và báo bạn qua email này. Hội thoại chỉ có mình và bạn xem được, trừ khi mình đăng công khai (mình sẽ không đăng email hay số điện thoại của bạn).</p>
+<p style="margin:16px 0 0">${btn(link, 'Xem hội thoại của bạn')}</p>`;
+  return email({ to: thread.author_email, subject: `Đã nhận câu hỏi về ${job ? job.title : 'vị trí'}`, html: shell(inner) });
+}
+
+/** Email báo ứng viên khi recruiter trả lời. */
+function emailThreadReply({ thread, job, body, base }) {
+  const link = threadLink(base || site(), thread);
+  const inner = `<p style="margin:0 0 10px;font-size:18px;font-weight:700">Mình đã trả lời câu hỏi của bạn</p>
+<p style="margin:0 0 6px">Chào ${esc(thread.author_name)}, về vị trí <b>${esc(job ? job.title : '')}</b>:</p>
+${quote(body)}
+<p style="margin:16px 0 0">${btn(link, 'Xem và trả lời tiếp')}</p>`;
+  return email({ to: thread.author_email, subject: `Luna đã trả lời câu hỏi về ${job ? job.title : 'vị trí'}`, html: shell(inner) });
+}
+
+module.exports = { baseUrl, threadLink, notifyThreadMessage, emailThreadReceipt, emailThreadReply, telegram, email, settle, notifyNewApplication, emailReceipt, emailStatus, site };

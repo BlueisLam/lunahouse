@@ -59,3 +59,13 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 - `functions/api/` điểm vào Pages Functions (mỏng, gọi sang `server/`)
 - `server/` logic xử lý (apply, track, admin, AI, thông báo), trạng thái hồ sơ ở `server/_lib/status.js`
 - `supabase/schema.sql`, `test/`
+
+## Hỏi đáp dưới job
+
+Ứng viên đặt câu hỏi ở cuối trang mỗi job (tên + email + nội dung). Mỗi câu hỏi tạo một hội thoại **riêng tư**:
+
+- Bạn nhận thông báo Telegram, trả lời trong admin → tab **Hỏi đáp**. Ứng viên nhận email kèm link riêng `/q?t=…` để xem và nhắn tiếp.
+- Hội thoại chỉ hiện công khai dưới job khi bạn bấm **Đăng công khai** (hoặc tick "Đăng công khai cùng lúc" khi trả lời). Người xem chỉ thấy tên gọi, không thấy email.
+- Chống spam: ô ẩn (honeypot), tối đa 6 tin/giờ/IP, tối đa 60 tin/hội thoại.
+
+**Bật tính năng:** chạy một lần file `supabase/migrations/2026-11-hoi-dap.sql` trong Supabase → SQL Editor. File chỉ thêm 2 bảng mới (`lh_threads`, `lh_messages`), không đụng dữ liệu cũ. Chưa chạy thì tab Hỏi đáp báo lỗi, các phần khác vẫn hoạt động.

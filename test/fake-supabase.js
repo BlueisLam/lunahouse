@@ -7,6 +7,8 @@ const DEFAULTS = {
   lh_candidates: () => ({ full_name: '', date_of_birth: '', address: '', phone_number: '', email: '', gender: 'Male', positions: [], english_level: '', total_years_experience: 0, years_experience_by_role: {}, project_domains: [], technologies: [], cv_upload_date: new Date().toISOString(), is_open_to_work: true, job_type_preference: '', expected_salary: '', notice_period: '', headline: '', notes: '', links: '', cv_path: '', cv_filename: '', cv_text: '', source: 'apply', parse_status: 'none', parse_error: '', dup_of: null }),
   lh_applications: () => ({ job_id: null, status: 'new', public_note: '', internal_note: '', cover_note: '', match_score: null, match_reason: '', next_action: '', next_action_date: null, ip_hash: '' }),
   lh_activities: () => ({ type: 'note', note: '', meta: {} }),
+  lh_threads: () => ({ is_public: false, unread_admin: true, last_from: 'candidate' }),
+  lh_messages: () => ({ ip_hash: '' }),
 };
 
 function derive(table, row) {
@@ -25,6 +27,7 @@ function uniqueCheck(db, table, row, selfId) {
     if (row.job_id && rows.some(r => r.job_id === row.job_id && r.candidate_id === row.candidate_id)) return dupe('lh_app_job_cand');
   }
   if (table === 'lh_jobs' && rows.some(r => r.slug === row.slug)) return dupe('lh_jobs_slug_key slug');
+  if (table === 'lh_threads' && rows.some(r => r.token === row.token)) return dupe('lh_threads_token_key token');
   return null;
 }
 
@@ -81,6 +84,8 @@ class Query {
       const gone = rows.filter(match);
       db.t[t] = rows.filter(r => !gone.includes(r));
       if (t === 'lh_candidates') gone.forEach(g => { db.t.lh_applications = db.t.lh_applications.filter(a => a.candidate_id !== g.id); });
+      if (t === 'lh_threads') gone.forEach(g => { db.t.lh_messages = db.t.lh_messages.filter(m => m.thread_id !== g.id); });
+      if (t === 'lh_jobs') gone.forEach(g => { const ts = db.t.lh_threads.filter(x => x.job_id === g.id).map(x => x.id); db.t.lh_threads = db.t.lh_threads.filter(x => x.job_id !== g.id); db.t.lh_messages = db.t.lh_messages.filter(m => !ts.includes(m.thread_id)); });
       if (t === 'lh_applications') gone.forEach(g => { db.t.lh_activities = db.t.lh_activities.filter(a => a.application_id !== g.id); });
       return { data: null, error: null };
     } else {
@@ -100,7 +105,7 @@ class Query {
 
 class FakeDB {
   constructor() {
-    this.t = { lh_jobs: [], lh_candidates: [], lh_applications: [], lh_activities: [] };
+    this.t = { lh_jobs: [], lh_candidates: [], lh_applications: [], lh_activities: [], lh_threads: [], lh_messages: [] };
     this.files = new Map();
     const self = this;
     this.storage = {

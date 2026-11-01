@@ -371,6 +371,81 @@ test('admin API từ chối khi chưa đăng nhập (multipart cũng vậy)', as
   assert.strictEqual((await H.invoke(H.F('admin-api'), { form: f })).status, 401);
 });
 
+// ---------- hỏi đáp dưới job ----------
+let thrToken = '', thrId = '';
+const ask = (o = {}, h = ip(40)) => H.invoke(H.F('questions'), { body: { action: 'ask', job_slug: jobSlug, name: 'Trần Văn Bình', email: 'Binh@Example.com', body: 'Vị trí này có cho làm remote không ạ?', ...o }, headers: h });
+test('hỏi đáp: đầu vào sai bị chặn, honeypot không lưu', async () => {
+  assert.strictEqual((await ask({ name: '' })).status, 400);
+  assert.strictEqual((await ask({ email: 'sai' })).status, 400);
+  assert.strictEqual((await ask({ body: 'ok' })).status, 400);
+  assert.strictEqual((await ask({ job_slug: 'khong-co' })).status, 404);
+  assert.strictEqual((await ask({ website: 'http://spam' })).status, 200);
+  assert.strictEqual(H.fake.t.lh_threads.length, 0);
+});
+test('hỏi đáp: đặt câu hỏi → thread riêng tư, Telegram cho admin, email link riêng cho ứng viên', async () => {
+  H.calls.length = 0;
+  const r = await ask({ body: 'Vị trí này có <b>remote</b> không ạ?' });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  thrToken = r.json.token; assert.match(thrToken, /^[a-f0-9]{36}$/);
+  assert.ok(r.json.link.includes('/q?t=' + thrToken));
+  const t = H.fake.t.lh_threads[0]; thrId = t.id;
+  assert.strictEqual(t.is_public, false); assert.strictEqual(t.author_email, 'binh@example.com');
+  const tg = H.calls.filter(c => /telegram/.test(c.url));
+  assert.ok(tg.some(c => /Câu hỏi mới/.test(c.body.text) && /Trần Văn Bình/.test(c.body.text)), 'Telegram báo câu hỏi mới');
+  assert.ok(!tg.some(c => /<b>remote<\/b>/.test(c.body.text)), 'HTML trong câu hỏi bị escape');
+  const mail = H.calls.filter(c => /resend/.test(c.url)).find(c => c.body.to.includes('binh@example.com'));
+  assert.ok(mail, 'email cho ứng viên'); assert.ok(mail.body.html.includes('/q?t=' + thrToken), 'email có link riêng');
+});
+test('hỏi đáp: chưa đăng công khai thì người lạ không thấy; chủ link xem được, không lộ email', async () => {
+  const pub = await H.invoke(H.F('questions'), { method: 'GET', query: { job: jobSlug } });
+  assert.deepStrictEqual(pub.json.threads, []);
+  const me = await H.invoke(H.F('questions'), { method: 'GET', query: { t: thrToken } });
+  assert.strictEqual(me.status, 200); assert.strictEqual(me.json.messages.length, 1);
+  assert.ok(!/binh@example\.com/.test(JSON.stringify(me.json)), 'không lộ email');
+  assert.strictEqual((await H.invoke(H.F('questions'), { method: 'GET', query: { t: 'a'.repeat(36) } })).status, 404);
+  assert.strictEqual((await H.invoke(H.F('questions'), { method: 'GET', query: { t: "x' or 1=1" } })).status, 404);
+});
+test('hỏi đáp: ứng viên nhắn thêm bằng link riêng → admin thấy chưa đọc', async () => {
+  H.calls.length = 0;
+  const r = await H.invoke(H.F('questions'), { body: { action: 'say', token: thrToken, body: 'Em cảm ơn, em hỏi thêm về lương.' }, headers: ip(40) });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && /nhắn thêm/.test(c.body.text)));
+  assert.strictEqual((await H.invoke(H.F('questions'), { body: { action: 'say', token: 'z'.repeat(36), body: 'xin chào bạn' }, headers: ip(40) })).status, 404);
+  const l = await admin('threads.list');
+  assert.strictEqual(l.threads.length, 1); assert.strictEqual(l.threads[0].unread_admin, true); assert.strictEqual(l.threads[0].count, 2);
+  assert.strictEqual((await admin('bootstrap')).unread_threads, 1);
+});
+test('hỏi đáp: admin trả lời → email cho ứng viên; get đánh dấu đã đọc, không lộ token', async () => {
+  const g = await admin('threads.get', { id: thrId });
+  assert.strictEqual(g.messages.length, 2); assert.strictEqual(g.thread.token, undefined);
+  assert.strictEqual((await admin('bootstrap')).unread_threads, 0);
+  H.calls.length = 0;
+  const r = await admin('threads.reply', { id: thrId, body: 'Có bạn nhé, hybrid 2 ngày/tuần.' });
+  assert.strictEqual(r.ok, true); assert.strictEqual(r.is_public, false);
+  const mail = H.calls.filter(c => /resend/.test(c.url)).find(c => c.body.to.includes('binh@example.com'));
+  assert.ok(mail && /hybrid/.test(mail.body.html) && mail.body.html.includes('/q?t=' + thrToken), 'email trả lời có nội dung + link');
+  assert.strictEqual(H.fake.t.lh_threads[0].last_from, 'recruiter');
+  assert.strictEqual(await H.invoke(H.F('admin-api'), { body: { action: 'threads.reply', id: thrId, body: 'x' } }).then(x => x.status), 401, 'cần đăng nhập');
+});
+test('hỏi đáp: chỉ khi admin đăng công khai mới hiện dưới job; chỉ lộ tên gọi', async () => {
+  await admin('threads.publish', { id: thrId, is_public: true });
+  const pub = await H.invoke(H.F('questions'), { method: 'GET', query: { job: jobSlug } });
+  assert.strictEqual(pub.json.threads.length, 1);
+  assert.strictEqual(pub.json.threads[0].name, 'Bình');
+  assert.strictEqual(pub.json.threads[0].messages.length, 3);
+  const raw = JSON.stringify(pub.json);
+  assert.ok(!/binh@example|token|author_email/i.test(raw), 'không lộ email/token');
+  await admin('threads.publish', { id: thrId, is_public: false });
+  assert.deepStrictEqual((await H.invoke(H.F('questions'), { method: 'GET', query: { job: jobSlug } })).json.threads, []);
+});
+test('hỏi đáp: giới hạn 6 tin/giờ/IP; xoá thread xoá luôn tin nhắn', async () => {
+  const h = ip(77);
+  for (let i = 0; i < 6; i++) assert.strictEqual((await ask({ email: 'x' + i + '@example.com' }, h)).status, 200);
+  assert.strictEqual((await ask({}, h)).status, 429);
+  await admin('threads.delete', { id: thrId });
+  assert.ok(!H.fake.t.lh_messages.some(m => m.thread_id === thrId));
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {
