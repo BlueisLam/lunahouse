@@ -39,8 +39,8 @@ async function parseCandidate(id, opts = {}) {
     if (text.length >= 80) {
       out = await AI.llm({ text: AI.cvPrompt(text), max_tokens: 4500, model: AI.MODEL_MAIN() });
     } else {
-      if (!AI.MODEL_VISION()) throw new Error('CV này là ảnh/bản scan, mà chưa đặt GROQ_VISION_MODEL nên AI không đọc được. Dùng PDF có chữ, hoặc nhập tay thông tin.');
-      out = await AI.llm({ text: AI.PARSE_PROMPT, images, max_tokens: 4500, model: AI.MODEL_VISION() });
+      if (!AI.canSeeImages()) throw new Error('CV này là ảnh/bản scan, mà chưa đặt GEMINI_API_KEY hoặc GROQ_VISION_MODEL nên AI không đọc được. Dùng PDF có chữ, hoặc nhập tay thông tin.');
+      out = await AI.llm({ text: AI.PARSE_PROMPT, images, max_tokens: 4500, model: AI.MODEL_VISION() || undefined });
     }
     const parsed = AI.shapeParsed(AI.extractJson(out));
     const merged = AI.mergeParsed(cand, parsed);

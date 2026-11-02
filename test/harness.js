@@ -50,9 +50,16 @@ function claudeReply(body) {
 global.fetch = async (url, opts = {}) => {
   url = String(url);
   const body = opts.body ? JSON.parse(opts.body) : null;
-  if (/telegram|resend|groq/.test(url)) calls.push({ url, body, headers: opts.headers });
+  if (/telegram|resend|groq|generativelanguage/.test(url)) calls.push({ url, body, headers: opts.headers });
   if (url.includes('api.telegram.org')) return resp(200, { ok: true });
   if (url.includes('api.resend.com')) return resp(200, { id: 'email_1' });
+  if (url.includes('generativelanguage.googleapis.com')) {
+    if (state.geminiStatus) return resp(state.geminiStatus, { error: { message: 'gemini down' } });
+    const txt = body.contents[0].parts.map(p => p.text || '').join('\n');
+    const t = claudeReply({ messages: [{ content: txt }] });
+    if (t === null) return resp(500, { error: 'boom' });
+    return resp(200, { candidates: [{ content: { parts: [{ text: t }] }, finishReason: 'STOP' }] });
+  }
   if (url.includes('api.groq.com')) {
     const t = claudeReply(body);
     if (t === null) return resp(500, { error: 'boom' });

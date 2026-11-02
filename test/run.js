@@ -303,7 +303,7 @@ test('candidates.get trả link CV tạm + danh sách application', async () => 
   assert.ok(r.applications.length >= 2);
   assert.ok(r.applications.some(a => a.job_title === 'Kho tài năng'));
 });
-test('parse: PDF mà không có chữ → báo lỗi rõ; ảnh cần GROQ_VISION_MODEL', async () => {
+test('parse: PDF mà không có chữ → báo lỗi rõ; ảnh cần AI đọc được ảnh', async () => {
   const up = await admin('candidates.upload', { name: 'scan.pdf', data: H.fakePdf('scan') });
   const r = await admin('candidates.parse', { id: up.id });
   assert.strictEqual(r.ok, false); assert.match(r.error, /Chưa lấy được chữ/);
@@ -478,6 +478,30 @@ test('SEO: job page có title/canonical/JSON-LD; job nháp thì noindex; sitemap
   assert.match(await seo.render(html, 'khong-ton-tai', 'lunahouse.click'), /noindex/);
   const sm = await seo.sitemap();
   assert.ok(sm.includes('/jobs/' + jobSlug));
+});
+
+test('AI dự phòng: Gemini trước, hết hạn mức thì sang Groq; cả hai hỏng thì báo cả hai', async () => {
+  const AI = require('../server/_lib/ai');
+  const ask = () => AI.llm({ text: 'Đọc đoạn mô tả công việc: x' });
+  const used = () => H.calls.map(c => /groq/.test(c.url) ? 'groq' : /generativelanguage/.test(c.url) ? 'gemini' : '').filter(Boolean);
+  try {
+    process.env.GEMINI_API_KEY = 'fake-gem';
+    H.calls.length = 0; await ask();
+    assert.deepStrictEqual(used(), ['gemini']);                       // Gemini ưu tiên
+    H.state.geminiStatus = 429; H.calls.length = 0;
+    assert.match(await ask(), /Senior Java Developer/);
+    assert.deepStrictEqual(used(), ['gemini', 'groq']);               // hết hạn mức → sang Groq
+    process.env.AI_PROVIDERS = 'groq,gemini'; H.state.geminiStatus = 0; H.calls.length = 0; await ask();
+    assert.deepStrictEqual(used(), ['groq']);                         // đổi thứ tự được
+    delete process.env.AI_PROVIDERS; H.state.failParse = true;
+    await assert.rejects(() => AI.llm({ text: 'You are a CV parser' }), e => /Gemini API 500/.test(e.message) && /Groq API 500/.test(e.message));
+    H.state.failParse = false;
+    process.env.GROQ_API_KEY = ''; H.state.geminiStatus = 0; H.calls.length = 0; await ask();
+    assert.deepStrictEqual(used(), ['gemini']);                       // chỉ có Gemini cũng chạy
+    assert.strictEqual(AI.canSeeImages(), true);
+    H.calls.length = 0; await AI.llm({ text: 'Đọc đoạn mô tả công việc: x', images: ['data:image/jpeg;base64,AAAA'] });
+    assert.strictEqual(H.calls[0].body.contents[0].parts[1].inline_data.mime_type, 'image/jpeg');
+  } finally { delete process.env.GEMINI_API_KEY; delete process.env.AI_PROVIDERS; process.env.GROQ_API_KEY = 'gsk_fake'; H.state.geminiStatus = 0; H.state.failParse = false; }
 });
 
 (async () => {

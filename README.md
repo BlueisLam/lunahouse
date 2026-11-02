@@ -14,6 +14,7 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
    - `ADMIN_PASSWORD` (≥ 16 ký tự), `SESSION_SECRET` (`openssl rand -hex 32`)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL`, `MAIL_REPLY_TO`
+   - AI có dự phòng: `GEMINI_API_KEY` (+ `GEMINI_MODEL`, mặc định `gemini-2.5-flash`) và/hoặc `GROQ_API_KEY`. Thứ tự thử đặt bằng `AI_PROVIDERS` (mặc định `gemini,groq`): nhà nào hết hạn mức hoặc lỗi thì tự chuyển sang nhà kế tiếp. Chỉ có một key thì chỉ dùng nhà đó.
    - `GROQ_API_KEY`, `GROQ_MODEL` (ví dụ `openai/gpt-oss-120b`; tên model Groq đổi thường xuyên, nếu báo lỗi model thì xem danh sách mới ở console.groq.com/docs/models)
    - Tuỳ chọn: `GROQ_MODEL_FAST`, `GROQ_VISION_MODEL` (đọc CV dạng ảnh)
    - `SITE_URL=https://lunahouse.click`
@@ -42,7 +43,7 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 
 ## Cách hoạt động (khác biệt so với server thường)
 - Gói free của Cloudflare giới hạn **10ms CPU mỗi request**, nên CV được upload dạng multipart (không mã hoá base64 trong function).
-- Groq chỉ nhận chữ. **Trình duyệt admin tự bóc chữ từ PDF** (thư viện pdf.js nằm trong `public/assets/vendor/`) rồi gửi lên cho AI. DOCX được bóc chữ ở server. CV dạng ảnh hoặc PDF scan chỉ đọc được nếu bạn đặt `GROQ_VISION_MODEL`; nếu không, hồ sơ báo "Đọc CV lỗi" và bạn nhập tay thông tin.
+- Groq chỉ nhận chữ. **Trình duyệt admin tự bóc chữ từ PDF** (thư viện pdf.js nằm trong `public/assets/vendor/`) rồi gửi lên cho AI. DOCX được bóc chữ ở server. CV dạng ảnh hoặc PDF scan chỉ đọc được khi có `GEMINI_API_KEY` (Gemini đọc được ảnh) hoặc bạn đặt `GROQ_VISION_MODEL`; nếu không, hồ sơ báo "Đọc CV lỗi" và bạn nhập tay thông tin.
 - CV mới nộp có trạng thái `pending`. **AI chỉ đọc CV khi bạn mở trang admin (cần mở bằng trình duyệt, vì bước bóc chữ PDF chạy ở đó)** (trang tự gọi lần lượt từng hồ sơ). Telegram/email báo hồ sơ mới vẫn gửi ngay, dùng thông tin ứng viên nhập.
 - File DOCX phải bóc chữ trong function (nặng CPU hơn). Nếu thấy "Đọc CV lỗi" với DOCX, bấm "Đọc lại" hoặc dùng PDF. Gói Workers Paid ($5/tháng) không còn lo giới hạn này.
 - Gói free: 100.000 lượt gọi function mỗi ngày, trang tĩnh không giới hạn.

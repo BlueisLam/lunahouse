@@ -1,43 +1,91 @@
 'use strict';
 const { HttpError, toArr, clean } = require('./util');
 
-// Groq (API tương thích OpenAI). Tên model đổi thường xuyên, nên luôn đặt qua biến GROQ_MODEL.
+// Nhiều nhà cung cấp AI, tự chuyển dự phòng. Thứ tự đặt qua AI_PROVIDERS (mặc định "gemini,groq");
+// nhà nào chưa có API key thì bỏ qua. Tên model đổi thường xuyên nên luôn đặt qua biến môi trường.
 const MODEL_MAIN = () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const MODEL_FAST = () => process.env.GROQ_MODEL_FAST || MODEL_MAIN();
 const MODEL_VISION = () => process.env.GROQ_VISION_MODEL || '';
+const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/** Gọi Groq. images: mảng data URL (chỉ khi có GROQ_VISION_MODEL). Tự thử lại khi bị giới hạn tốc độ (429). */
-async function llm({ text, images, max_tokens = 2000, model, timeoutMs = 100000 }) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new HttpError(400, 'Chưa cấu hình GROQ_API_KEY trong biến môi trường.');
+const providerOrder = () => String(process.env.AI_PROVIDERS || 'gemini,groq').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
+const hasKey = p => !!(p === 'gemini' ? process.env.GEMINI_API_KEY : p === 'groq' ? process.env.GROQ_API_KEY : '');
+const activeProviders = () => providerOrder().filter((p, i, a) => a.indexOf(p) === i && hasKey(p));
+/** Có nhà cung cấp nào đọc được ảnh không (Gemini luôn đọc được; Groq cần GROQ_VISION_MODEL). */
+const canSeeImages = () => activeProviders().some(p => p === 'gemini' || (p === 'groq' && !!MODEL_VISION()));
+
+class ProviderError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
+const retryable = e => !e.status || e.status === 429 || e.status >= 500 || e.status === 408;
+
+async function callGroq({ text, images, max_tokens, model, timeoutMs }) {
   const content = images && images.length
     ? [{ type: 'text', text }, ...images.map(u => ({ type: 'image_url', image_url: { url: u } }))]
     : text;
   const mdl = model || MODEL_MAIN();
   const body = { model: mdl, max_completion_tokens: max_tokens, temperature: 0.2, messages: [{ role: 'user', content }] };
   if (/^openai\/gpt-oss/.test(mdl)) body.reasoning_effort = 'low';
-  let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const raw = await r.text();
-    if (r.status === 429 && attempt < 2) {
-      const wait = Math.min(Number((r.headers && r.headers.get && r.headers.get('retry-after')) || 5), 10);
-      lastErr = new Error('Groq đang giới hạn tốc độ (429).');
-      await sleep(wait * 1000);
-      continue;
-    }
-    if (!r.ok) throw new Error(`Groq API ${r.status}: ${raw.slice(0, 240)}`);
-    const data = JSON.parse(raw);
-    const msg = data.choices && data.choices[0] && data.choices[0].message;
-    return String((msg && msg.content) || '');
+  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + process.env.GROQ_API_KEY },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs),
+  });
+  const raw = await r.text();
+  if (!r.ok) throw Object.assign(new ProviderError(`Groq API ${r.status}: ${raw.slice(0, 240)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
+  const msg = (JSON.parse(raw).choices || [{}])[0].message;
+  return String((msg && msg.content) || '');
+}
+
+async function callGemini({ text, images, max_tokens, timeoutMs }) {
+  const mdl = GEMINI_MODEL();
+  const parts = [{ text }];
+  for (const u of images || []) {
+    const m = /^data:([^;]+);base64,(.+)$/.exec(u || '');
+    if (m) parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
   }
-  throw lastErr || new Error('Groq không phản hồi.');
+  const gen = { maxOutputTokens: max_tokens, temperature: 0.2 };
+  if (/2\.5-flash/.test(mdl)) gen.thinkingConfig = { thinkingBudget: 0 }; // không để "suy nghĩ" ăn hết token đầu ra
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gen }), signal: AbortSignal.timeout(timeoutMs),
+  });
+  const raw = await r.text();
+  if (!r.ok) throw Object.assign(new ProviderError(`Gemini API ${r.status}: ${raw.slice(0, 240)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
+  const c = (JSON.parse(raw).candidates || [])[0];
+  const out = c && c.content && (c.content.parts || []).map(p => p.text || '').join('');
+  if (!out) throw new ProviderError('Gemini không trả nội dung (' + ((c && c.finishReason) || 'rỗng') + ').', 502);
+  return out;
+}
+const CALL = { gemini: callGemini, groq: callGroq };
+
+/**
+ * Gọi AI. Thử lần lượt các nhà cung cấp theo AI_PROVIDERS; nhà nào hết hạn mức (429), lỗi máy chủ, quá giờ
+ * hoặc lỗi cấu hình thì chuyển sang nhà kế tiếp. Nhà cuối cùng thì đợi và thử lại tối đa 3 lần khi bị 429.
+ * images: mảng data URL. model: tên model Groq (chỉ Groq dùng).
+ */
+async function llm({ text, images, max_tokens = 2000, model, timeoutMs = 100000 }) {
+  const hasImg = !!(images && images.length);
+  let list = activeProviders();
+  if (hasImg) list = list.filter(p => p === 'gemini' || !!model); // Groq chỉ đọc ảnh khi có model vision
+  if (!list.length) {
+    if (!activeProviders().length) throw new HttpError(400, 'Chưa cấu hình GEMINI_API_KEY hoặc GROQ_API_KEY trong biến môi trường.');
+    throw new HttpError(400, 'Chưa có AI nào đọc được ảnh. Đặt GEMINI_API_KEY hoặc GROQ_VISION_MODEL.');
+  }
+  const errs = [];
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i], last = i === list.length - 1;
+    for (let attempt = 0; attempt < (last ? 3 : 1); attempt++) {
+      try { return await CALL[p]({ text, images, max_tokens, model, timeoutMs }); }
+      catch (e) {
+        if (e.name === 'TimeoutError' || e.name === 'AbortError') e = new ProviderError(p + ' quá thời gian chờ.', 408);
+        if (last && e.status === 429 && attempt < 2) { await sleep(Math.min(e.retryAfter || 5, 10) * 1000); continue; }
+        errs.push(e.message);
+        if (!retryable(e) && !last) console.warn('[ai]', p, 'lỗi cấu hình, chuyển nhà kế tiếp:', e.message);
+        else if (!last) console.warn('[ai]', p, 'không dùng được, chuyển nhà kế tiếp:', e.message);
+        break;
+      }
+    }
+  }
+  throw new Error(errs.length > 1 ? errs.join(' | ') : errs[0]);
 }
 
 /** Lấy JSON object/array đầu tiên trong câu trả lời (model đôi khi bọc ```json). */
@@ -205,4 +253,4 @@ ${String(text).slice(0, 12000)}`;
   return extractJson(out);
 }
 
-module.exports = { llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION };
+module.exports = { llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION, canSeeImages, activeProviders };
