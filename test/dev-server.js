@@ -46,6 +46,12 @@ const server = http.createServer(async (req, res) => {
     const r = await H.F(fn).handler(event, {});
     res.writeHead(r.statusCode, r.headers || {}); return res.end(r.body);
   }
+  if (url.pathname === '/sitemap.xml') { res.writeHead(200, { 'content-type': 'application/xml' }); return res.end(await require('../server/job-page').sitemap()); }
+  if (/^\/jobs\/.+/.test(url.pathname)) {
+    const out = await require('../server/job-page').render(fs.readFileSync(path.join(PUB, 'job.html'), 'utf8'), decodeURIComponent(url.pathname.split('/').pop()), url.hostname);
+    res.writeHead(200, Object.assign({ 'content-type': TYPES['.html'] }, staticHeaders('/job')));
+    return res.end(out || fs.readFileSync(path.join(PUB, 'job.html')));
+  }
   let p = url.pathname;
   for (const [re, to] of PAGES) if (re.test(p)) p = to;
   let file = path.join(PUB, p);

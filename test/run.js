@@ -462,6 +462,24 @@ test('hỏi đáp: giới hạn 6 tin/giờ/IP; xoá thread xoá luôn tin nhắ
   assert.ok(!H.fake.t.lh_messages.some(m => m.thread_id === thrId));
 });
 
+test('SEO: job page có title/canonical/JSON-LD; job nháp thì noindex; sitemap chỉ job đang mở', async () => {
+  const seo = require('../server/job-page');
+  const fs = require('fs');
+  const html = fs.readFileSync(__dirname + '/../public/job.html', 'utf8');
+  const row = H.fake.t.lh_jobs.find(j => j.slug === jobSlug); const out = await seo.render(html, jobSlug, 'lunahouse.click');
+  assert.match(out, new RegExp('<title>' + row.title + ' · Luna</title>'));
+  assert.strictEqual((out.match(/<title>/g) || []).length, 1);
+  assert.match(out, new RegExp('rel="canonical" href="https://lunahouse\\.click/jobs/' + jobSlug));
+  assert.match(out, /<html lang="vi"/);
+  assert.ok(!/name="robots"/.test(out));
+  const ld = JSON.parse(out.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+  assert.strictEqual(ld['@type'], 'JobPosting'); assert.strictEqual(ld.title, row.title);
+  assert.strictEqual((await seo.render(html, jobSlug, 'abc.pages.dev')).includes('noindex'), true);
+  assert.match(await seo.render(html, 'khong-ton-tai', 'lunahouse.click'), /noindex/);
+  const sm = await seo.sitemap();
+  assert.ok(sm.includes('/jobs/' + jobSlug));
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {

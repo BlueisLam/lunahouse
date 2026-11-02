@@ -69,3 +69,9 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 - Chống spam: ô ẩn (honeypot), tối đa 6 tin/giờ/IP, tối đa 60 tin/hội thoại.
 
 **Bật tính năng:** chạy một lần file `supabase/migrations/2026-11-hoi-dap.sql` trong Supabase → SQL Editor. File chỉ thêm 2 bảng mới (`lh_threads`, `lh_messages`), không đụng dữ liệu cũ. Chưa chạy thì tab Hỏi đáp báo lỗi, các phần khác vẫn hoạt động.
+
+## SEO
+- Trang chủ: canonical, Open Graph, Twitter card, JSON-LD (WebSite + Organization); ảnh chia sẻ `public/assets/og.png`.
+- `/jobs/<slug>`: `functions/jobs/[slug].js` nhét title, mô tả, canonical, Open Graph và JSON-LD JobPosting vào HTML (logic ở `server/job-page.js`). Job không tồn tại hoặc đã đóng thì noindex. Lỗi thì trả trang gốc.
+- `/sitemap.xml` (động, chỉ job đang mở) và `robots.txt` chặn `/admin`, `/api`, `/q`, `/track`, `/apply`.
+- Bản xem thử `*.pages.dev` luôn `noindex`; canonical luôn trỏ về `https://lunahouse.click` (đổi bằng biến `SEO_ORIGIN` nếu cần).
