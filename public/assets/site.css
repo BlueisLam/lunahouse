@@ -302,3 +302,19 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 /* Dòng mô tả cạnh logo: làm rõ đây là trang cá nhân, không phải công ty */
 .tagline { margin-right: auto; padding-left: 12px; border-left: 1.5px solid var(--line); color: var(--muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
 @media (max-width: 860px) { .tagline { display: none; } }
+
+/* Nút đổi giao diện sáng/tối */
+.theme-btn { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer; margin-left: 8px; }
+.theme-btn:hover { background: var(--accent-soft); color: var(--ink); }
+.theme-btn svg { width: 19px; height: 19px; }
+.theme-btn .ic-sun { display: none; }
+:root[data-theme="dark"] .theme-btn .ic-sun { display: block; }
+:root[data-theme="dark"] .theme-btn .ic-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-btn .ic-sun { display: block; }
+  :root:not([data-theme="light"]) .theme-btn .ic-moon { display: none; }
+}
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+.top .wrap { align-items: center; }
