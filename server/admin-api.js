@@ -255,9 +255,12 @@ A['apps.get'] = async (b) => {
   const app = must(await db.from('lh_applications').select('*').eq('id', b.id).maybeSingle(), 'app');
   if (!app) throw new U.HttpError(404, 'Không tìm thấy application.');
   const acts = must(await db.from('lh_activities').select('*').eq('application_id', app.id).order('created_at', { ascending: false }), 'acts');
-  const cand = must(await db.from('lh_candidates').select('id,full_name,phone_number,email,technologies,total_years_experience,headline').eq('id', app.candidate_id).maybeSingle(), 'cand');
+  const cand = must(await db.from('lh_candidates').select('id,full_name,phone_number,email,technologies,total_years_experience,headline,cv_path,cv_filename').eq('id', app.candidate_id).maybeSingle(), 'cand');
   const job = app.job_id ? must(await db.from('lh_jobs').select('id,title,slug').eq('id', app.job_id).maybeSingle(), 'job') : null;
-  return { application: app, activities: acts, candidate: cand, job };
+  let cv_url = '';
+  if (cand && cand.cv_path) { const s = await db.storage.from(BUCKET).createSignedUrl(cand.cv_path, 3600); cv_url = (s.data && s.data.signedUrl) || ''; }
+  if (cand) { delete cand.cv_path; }
+  return { application: app, activities: acts, candidate: cand, job, cv_url };
 };
 
 A['apps.create'] = async (b) => {

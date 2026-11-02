@@ -72,12 +72,15 @@ exports.handler = U.wrap(async (event) => {
   let cand = must(await db.from('lh_candidates').select('*').eq('email_norm', emailNorm).limit(1), 'find by email')[0];
   if (!cand && phoneNorm.length === 9) cand = must(await db.from('lh_candidates').select('*').eq('phone_norm', phoneNorm).limit(1), 'find by phone')[0];
 
-  // Đã nộp đúng job này rồi → gửi lại mã qua email, không tạo trùng
+  // Đã nộp đúng job này rồi → gửi lại mã qua email, không tạo trùng.
+  // Ngoại lệ: ứng viên đã RÚT hồ sơ thì cho nộp lại (mở lại đúng hồ sơ cũ, giữ nguyên mã và lịch sử).
+  let reapply = null;
   if (cand) {
     let dupQ = db.from('lh_applications').select('*').eq('candidate_id', cand.id);
     dupQ = job ? dupQ.eq('job_id', job.id) : dupQ.is('job_id', null);
     const dup = must(await dupQ.limit(1), 'dup app')[0];
-    if (dup) {
+    if (dup && dup.status === 'withdrawn') reapply = dup;
+    else if (dup) {
       await N.settle([N.emailReceipt({ app: dup, cand, job }), N.notifyNewApplication({ app: dup, cand, job, duplicate: true })]);
       return U.json(200, { ok: true, duplicate: true, message: 'Bạn đã nộp vị trí này rồi. Mình vừa gửi lại mã hồ sơ vào email của bạn.' });
     }
@@ -106,6 +109,14 @@ exports.handler = U.wrap(async (event) => {
   must(await db.from('lh_candidates').update({
     cv_path: path, cv_filename: cv.name, cv_upload_date: new Date().toISOString(), parse_status: 'pending', parse_error: '',
   }).eq('id', cand.id), 'save cv path');
+
+  // Nộp lại sau khi rút: mở lại hồ sơ cũ thay vì tạo mới
+  if (reapply) {
+    const app = must(await db.from('lh_applications').update({ status: 'new', cover_note: f.cover_note, public_note: '', ip_hash: ipHash }).eq('id', reapply.id).select().single(), 'reapply');
+    must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp lại sau khi rút hồ sơ (đã cập nhật CV)', meta: { from: 'withdrawn', to: 'new' } }), 'activity');
+    await N.settle([N.notifyNewApplication({ app, cand, job, reapply: true }), N.emailReceipt({ app, cand, job })]);
+    return U.json(200, { ok: true, code: app.code, job_title: job ? job.title : null, email: cand.email, reapplied: true });
+  }
 
   // Tạo application với mã tra cứu (thử lại nếu trùng mã)
   let app = null;

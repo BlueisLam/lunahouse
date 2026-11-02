@@ -273,7 +273,7 @@ test('kho CV: AI lỗi → parse_status failed, có thể đọc lại', async (
   H.state.cv = null;
 });
 test('matching: tầng 1 lọc, tầng 2 chấm điểm, thêm vào pipeline không tạo trùng', async () => {
-  await admin('candidates.save', { full_name: 'Lê Văn Cường', email: 'cuong@example.com', phone_number: '0977000111', total_years_experience: 7, technologies: 'Java, Spring Boot, Kafka', project_domains: 'Banking', positions: 'Backend Developer' });
+  await admin('candidates.save', { full_name: 'Lê Văn Cường', email: 'cuong@example.com', phone_number: '0931846275', total_years_experience: 7, technologies: 'Java, Spring Boot, Kafka', project_domains: 'Banking', positions: 'Backend Developer' });
   await admin('candidates.save', { full_name: 'Phạm PHP', email: 'php@example.com', phone_number: '0977000222', total_years_experience: 9, technologies: 'PHP, Laravel' });
   const s1 = await admin('match.stage1', { job_id: jobId });
   const names = s1.pool.map(p => p.name);
@@ -508,6 +508,27 @@ test('AI dự phòng: Gemini trước, hết hạn mức thì sang Groq; cả ha
     H.calls.length = 0; await AI.llm({ text: 'Đọc đoạn mô tả công việc: x', images: ['data:image/jpeg;base64,AAAA'] });
     assert.strictEqual(H.calls[0].body.contents[0].parts[1].inline_data.mime_type, 'image/jpeg');
   } finally { delete process.env.GEMINI_API_KEY; delete process.env.AI_PROVIDERS; process.env.GROQ_API_KEY = 'gsk_fake'; delete process.env.GEMINI_MODEL; H.state.geminiDeadModels = []; H.state.geminiStatus = 0; H.state.failParse = false; }
+});
+
+test('rút hồ sơ rồi nộp lại: mở lại đúng hồ sơ cũ, giữ mã, lưu CV mới, báo admin; nộp trùng khi chưa rút thì không tạo mới', async () => {
+  const mk = (extra = '') => H.invoke(H.F('apply'), { body: applyBody({ full_name: 'Võ Nộp Lại', email: 'nop.lai.x9@example.com', phone_number: '0905550123', cv: { name: 'CV moi.pdf', data: H.fakePdf(extra) } }), headers: ip(41) });
+  const a1 = await mk('v1'); assert.strictEqual(a1.status, 200, JSON.stringify(a1.json)); assert.ok(a1.json.code && a1.json.code !== 'LH-XXXXXX', JSON.stringify(a1.json));
+  const row = () => H.fake.t.lh_applications.find(a => a.code === a1.json.code);
+  const dup = await mk('v1b'); assert.strictEqual(dup.json.duplicate, true);                    // chưa rút → báo đã nộp
+  await H.invoke(H.F('track'), { body: { code: a1.json.code, contact: 'nop.lai.x9@example.com', action: 'withdraw' } });
+  assert.strictEqual(row().status, 'withdrawn');
+  const cand = () => H.fake.t.lh_candidates.find(c => c.id === row().candidate_id);
+  const oldCv = cand().cv_path; H.calls.length = 0;
+  const a2 = await mk('v2');
+  assert.strictEqual(a2.status, 200, JSON.stringify(a2.json));
+  assert.strictEqual(a2.json.reapplied, true); assert.strictEqual(a2.json.code, a1.json.code);
+  assert.strictEqual(row().status, 'new'); assert.notStrictEqual(cand().cv_path, oldCv);
+  assert.strictEqual(H.fake.t.lh_applications.filter(a => a.candidate_id === row().candidate_id && a.job_id === row().job_id).length, 1);
+  const acts = H.fake.t.lh_activities.filter(x => x.application_id === row().id).map(x => x.note);
+  assert.ok(acts.some(n => /nộp lại sau khi rút/.test(n)));
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && /Nộp lại sau khi rút/.test(c.body.text)));
+  const g = await admin('apps.get', { id: row().id });
+  assert.match(g.cv_url, /^https:\/\/fake\.supabase\.co\/sign\//); assert.ok(!('cv_path' in g.candidate));
 });
 
 (async () => {

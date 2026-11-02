@@ -64,10 +64,10 @@ const codeBox = code => `<div style="margin:16px 0;padding:14px 16px;background:
 const btn = (href, text) => `<a href="${esc(href)}" style="display:inline-block;background:#4b3fd1;color:#fff;text-decoration:none;font-weight:700;padding:11px 20px;border-radius:8px">${esc(text)}</a>`;
 
 /** Có hồ sơ mới → Telegram + email cho admin. */
-async function notifyNewApplication({ app, cand, job, duplicate }) {
+async function notifyNewApplication({ app, cand, job, duplicate, reapply }) {
   const link = `${site()}/admin/#/candidate/${cand.id}`;
   const lines = [
-    duplicate ? '🔁 <b>Ứng viên nộp lại</b>' : '🆕 <b>Hồ sơ mới</b>',
+    reapply ? '🔄 <b>Nộp lại sau khi rút hồ sơ</b> (CV mới đã được lưu)' : duplicate ? '🔁 <b>Ứng viên nộp lại</b>' : '🆕 <b>Hồ sơ mới</b>',
     `<b>${esc(cand.full_name)}</b> → ${esc(job ? job.title : 'Kho tài năng (không chọn vị trí)')}`,
     `📞 ${esc(cand.phone_number)}   ✉️ ${esc(cand.email)}`,
     cand.address ? `📍 ${esc(cand.address)}` : '',
@@ -77,7 +77,7 @@ async function notifyNewApplication({ app, cand, job, duplicate }) {
     `🔖 ${esc(app.code)}`,
     `<a href="${esc(link)}">Mở trong admin</a>`,
   ].filter(Boolean);
-  const subject = `${duplicate ? 'Nộp lại' : 'Hồ sơ mới'}: ${cand.full_name} — ${job ? job.title : 'Kho tài năng'}`;
+  const subject = `${reapply || duplicate ? 'Nộp lại' : 'Hồ sơ mới'}: ${cand.full_name} — ${job ? job.title : 'Kho tài năng'}`;
   const inner = `<p style="margin:0 0 8px;font-size:18px;font-weight:700">${esc(cand.full_name)}</p>
 <p style="margin:0 0 12px;color:#403c66">${esc(job ? job.title : 'Kho tài năng')}</p>
 <p style="margin:0 0 4px">📞 ${esc(cand.phone_number)}<br>✉️ ${esc(cand.email)}${cand.address ? '<br>📍 ' + esc(cand.address) : ''}${cand.expected_salary ? '<br>💰 ' + esc(cand.expected_salary) : ''}${cand.notice_period ? '<br>⏳ ' + esc(cand.notice_period) : ''}</p>
