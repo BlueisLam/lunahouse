@@ -6,7 +6,6 @@ const { HttpError, toArr, clean } = require('./util');
 const MODEL_MAIN = () => process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const MODEL_FAST = () => process.env.GROQ_MODEL_FAST || MODEL_MAIN();
 const MODEL_VISION = () => process.env.GROQ_VISION_MODEL || '';
-const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const providerOrder = () => String(process.env.AI_PROVIDERS || 'gemini,groq').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
@@ -35,25 +34,38 @@ async function callGroq({ text, images, max_tokens, model, timeoutMs }) {
   return String((msg && msg.content) || '');
 }
 
+// Google hay khai tử model cũ ("no longer available", 404). Thử lần lượt: GEMINI_MODEL → gemini-3.8-flash → gemini-flash-latest.
+const geminiModels = () => [process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter((m, i, a) => m && a.indexOf(m) === i);
+const deadGemini = new Set(); // model đã bị Google từ chối (404) thì khỏi thử lại trong cùng instance
+
 async function callGemini({ text, images, max_tokens, timeoutMs }) {
-  const mdl = GEMINI_MODEL();
   const parts = [{ text }];
   for (const u of images || []) {
     const m = /^data:([^;]+);base64,(.+)$/.exec(u || '');
     if (m) parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
   }
-  const gen = { maxOutputTokens: max_tokens, temperature: 0.2 };
-  if (/2\.5-flash/.test(mdl)) gen.thinkingConfig = { thinkingBudget: 0 }; // không để "suy nghĩ" ăn hết token đầu ra
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent', {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-    body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gen }), signal: AbortSignal.timeout(timeoutMs),
-  });
-  const raw = await r.text();
-  if (!r.ok) throw Object.assign(new ProviderError(`Gemini API ${r.status}: ${raw.slice(0, 240)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
-  const c = (JSON.parse(raw).candidates || [])[0];
-  const out = c && c.content && (c.content.parts || []).map(p => p.text || '').join('');
-  if (!out) throw new ProviderError('Gemini không trả nội dung (' + ((c && c.finishReason) || 'rỗng') + ').', 502);
-  return out;
+  const list = geminiModels().filter(m => !deadGemini.has(m));
+  if (!list.length) deadGemini.clear(), list.push(...geminiModels());
+  let lastErr;
+  for (const mdl of list) {
+    const gen = { maxOutputTokens: /2\.5-flash/.test(mdl) ? max_tokens : Math.min(max_tokens * 3, 16000), temperature: 0.2 };
+    if (/2\.5-flash/.test(mdl)) gen.thinkingConfig = { thinkingBudget: 0 }; // đời 3.x có "suy nghĩ" ăn token đầu ra nên nới hạn mức
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent', {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gen }), signal: AbortSignal.timeout(timeoutMs),
+    });
+    const raw = await r.text();
+    if (!r.ok) {
+      lastErr = Object.assign(new ProviderError(`Gemini API ${r.status} (${mdl}): ${raw.slice(0, 200)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
+      if (r.status === 404 || (r.status === 400 && /model/i.test(raw))) { deadGemini.add(mdl); continue; } // model không còn → thử model kế
+      throw lastErr;
+    }
+    const c = (JSON.parse(raw).candidates || [])[0];
+    const out = c && c.content && (c.content.parts || []).map(p => p.text || '').join('');
+    if (!out) throw new ProviderError('Gemini không trả nội dung (' + ((c && c.finishReason) || 'rỗng') + ').', 502);
+    return out;
+  }
+  throw lastErr || new ProviderError('Gemini: không có model nào dùng được.', 404);
 }
 const CALL = { gemini: callGemini, groq: callGroq };
 

@@ -54,6 +54,7 @@ global.fetch = async (url, opts = {}) => {
   if (url.includes('api.telegram.org')) return resp(200, { ok: true });
   if (url.includes('api.resend.com')) return resp(200, { id: 'email_1' });
   if (url.includes('generativelanguage.googleapis.com')) {
+    if (state.geminiDeadModels && state.geminiDeadModels.some(m => url.includes('/models/' + m + ':'))) return resp(404, { error: { message: 'no longer available' } });
     if (state.geminiStatus) return resp(state.geminiStatus, { error: { message: 'gemini down' } });
     const txt = body.contents[0].parts.map(p => p.text || '').join('\n');
     const t = claudeReply({ messages: [{ content: txt }] });

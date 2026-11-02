@@ -491,6 +491,12 @@ test('AI dự phòng: Gemini trước, hết hạn mức thì sang Groq; cả ha
     H.state.geminiStatus = 429; H.calls.length = 0;
     assert.match(await ask(), /Senior Java Developer/);
     assert.deepStrictEqual(used(), ['gemini', 'groq']);               // hết hạn mức → sang Groq
+    H.state.geminiStatus = 0; process.env.GEMINI_MODEL = 'gemini-2.5-flash'; H.state.geminiDeadModels = ['gemini-2.5-flash']; H.calls.length = 0;
+    await ask();                                                      // model cũ bị khai tử → tự thử model kế, không sang Groq
+    assert.deepStrictEqual(used(), ['gemini', 'gemini']);
+    assert.ok(H.calls[1].url.includes('gemini-3.8-flash'));
+    H.calls.length = 0; await ask(); assert.deepStrictEqual(used(), ['gemini']); // nhớ model chạy được
+    delete process.env.GEMINI_MODEL; H.state.geminiDeadModels = [];
     process.env.AI_PROVIDERS = 'groq,gemini'; H.state.geminiStatus = 0; H.calls.length = 0; await ask();
     assert.deepStrictEqual(used(), ['groq']);                         // đổi thứ tự được
     delete process.env.AI_PROVIDERS; H.state.failParse = true;
@@ -501,7 +507,7 @@ test('AI dự phòng: Gemini trước, hết hạn mức thì sang Groq; cả ha
     assert.strictEqual(AI.canSeeImages(), true);
     H.calls.length = 0; await AI.llm({ text: 'Đọc đoạn mô tả công việc: x', images: ['data:image/jpeg;base64,AAAA'] });
     assert.strictEqual(H.calls[0].body.contents[0].parts[1].inline_data.mime_type, 'image/jpeg');
-  } finally { delete process.env.GEMINI_API_KEY; delete process.env.AI_PROVIDERS; process.env.GROQ_API_KEY = 'gsk_fake'; H.state.geminiStatus = 0; H.state.failParse = false; }
+  } finally { delete process.env.GEMINI_API_KEY; delete process.env.AI_PROVIDERS; process.env.GROQ_API_KEY = 'gsk_fake'; delete process.env.GEMINI_MODEL; H.state.geminiDeadModels = []; H.state.geminiStatus = 0; H.state.failParse = false; }
 });
 
 (async () => {

@@ -14,7 +14,7 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
    - `ADMIN_PASSWORD` (≥ 16 ký tự), `SESSION_SECRET` (`openssl rand -hex 32`)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL`, `MAIL_REPLY_TO`
-   - AI có dự phòng: `GEMINI_API_KEY` (+ `GEMINI_MODEL`, mặc định `gemini-2.5-flash`) và/hoặc `GROQ_API_KEY`. Thứ tự thử đặt bằng `AI_PROVIDERS` (mặc định `gemini,groq`): nhà nào hết hạn mức hoặc lỗi thì tự chuyển sang nhà kế tiếp. Chỉ có một key thì chỉ dùng nhà đó.
+   - AI có dự phòng: `GEMINI_API_KEY` (+ `GEMINI_MODEL`, tuỳ chọn; mặc định tự thử `gemini-3.8-flash` rồi `gemini-flash-latest`, model nào Google khai tử thì tự bỏ qua) và/hoặc `GROQ_API_KEY`. Thứ tự thử đặt bằng `AI_PROVIDERS` (mặc định `gemini,groq`): nhà nào hết hạn mức hoặc lỗi thì tự chuyển sang nhà kế tiếp. Chỉ có một key thì chỉ dùng nhà đó.
    - `GROQ_API_KEY`, `GROQ_MODEL` (ví dụ `openai/gpt-oss-120b`; tên model Groq đổi thường xuyên, nếu báo lỗi model thì xem danh sách mới ở console.groq.com/docs/models)
    - Tuỳ chọn: `GROQ_MODEL_FAST`, `GROQ_VISION_MODEL` (đọc CV dạng ảnh)
    - `SITE_URL=https://lunahouse.click`
