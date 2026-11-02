@@ -370,6 +370,22 @@ test('admin API từ chối khi chưa đăng nhập (multipart cũng vậy)', as
   const f = new FormData(); f.append('action', 'candidates.upload'); f.append('file', new Blob(['%PDF-1.4 x']), 'a.pdf');
   assert.strictEqual((await H.invoke(H.F('admin-api'), { form: f })).status, 401);
 });
+test('ngôn ngữ job: AI viết đúng ngôn ngữ chọn; lang lưu và hiện ra công khai', async () => {
+  const lastPrompt = () => { const g = H.calls.filter(c => /groq/.test(c.url)).pop(); return JSON.stringify(g.body); };
+  H.calls.length = 0;
+  const vi = await admin('jobs.fromText', { text: 'Tuyển Senior Java Developer, 5 năm kinh nghiệm, Spring Boot, Kafka, ngân hàng. Lương 45-70 triệu.' });
+  assert.strictEqual(vi.job.lang, 'vi'); assert.ok(/NGÔN NGỮ ĐẦU RA: tiếng Việt/.test(lastPrompt()));
+  H.calls.length = 0;
+  const en = await admin('jobs.fromText', { text: 'Hiring a Senior Java Developer, 5 years experience, Spring Boot, Kafka, banking domain.', lang: 'en' });
+  assert.strictEqual(en.job.lang, 'en'); assert.ok(/viết bằng tiếng Anh/.test(lastPrompt()), 'prompt yêu cầu tiếng Anh');
+  assert.strictEqual((await admin('jobs.fromText', { text: 'Hiring a Senior Java Developer, 5 years experience, Spring Boot.', lang: 'xx' })).job.lang, 'vi', 'giá trị lạ → vi');
+  const saved = await admin('jobs.save', { ...en.job, title: 'Senior Java Developer EN', status: 'open' });
+  const pub = await H.invoke(H.F('jobs-public'), { method: 'GET', query: { slug: saved.job.slug } });
+  assert.strictEqual(pub.json.job.lang, 'en');
+  const old = await H.invoke(H.F('jobs-public'), { method: 'GET', query: { slug: jobSlug } });
+  assert.strictEqual(old.json.job.lang, 'vi', 'job cũ mặc định tiếng Việt');
+  await admin('jobs.delete', { id: saved.job.id });
+});
 
 // ---------- hỏi đáp dưới job ----------
 let thrToken = '', thrId = '';

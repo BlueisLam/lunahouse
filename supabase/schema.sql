@@ -22,6 +22,7 @@ create table if not exists lh_jobs (
   job_type           text default 'Full-time',
   salary_text        text default '',                 -- "Thoả thuận", "25–40 triệu"...
   location           text default '',                 -- "Hồ Chí Minh", "Hà Nội", "Remote"...
+  lang               text not null default 'vi',      -- ngôn ngữ hiển thị JD: vi | en
   summary            text default '',
   responsibilities   text default '',                 -- mỗi dòng một ý
   requirements       text default '',
@@ -161,4 +162,5 @@ on conflict (id) do nothing;
 
 -- Nếu bạn đã chạy schema trước đây (chưa có cột location), chạy thêm dòng này:
 alter table lh_jobs add column if not exists location text default '';
+alter table lh_jobs add column if not exists lang text not null default 'vi';
 update storage.buckets set id = id where id = 'lh-cv';

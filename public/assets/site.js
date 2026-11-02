@@ -20,6 +20,9 @@
     });
   }
 
+  /* Ngôn ngữ hiển thị theo từng job: t('tiếng Việt', 'English') */
+  function tFor(lang) { var en = lang === 'en'; return function (vi, enText) { return en ? enText : vi; }; }
+
   function fmtDate(iso, withTime) {
     var d = new Date(iso); if (isNaN(d)) return '';
     var s = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -100,7 +103,7 @@
       box.innerHTML = rows.map(function (j) {
         return '<a class="job" href="/jobs/' + encodeURIComponent(j.slug) + '"><div><h3>' + esc(j.title) + '</h3><div class="meta">' +
           (j.level ? '<span><b>' + esc(j.level) + '</b></span>' : '') + '<span>' + esc(j.job_type || 'Full-time') + '</span>' +
-          '<span>' + esc(j.salary_text || 'Thoả thuận') + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') + '</div></div><span class="go" aria-hidden="true">→</span>' +
+          '<span>' + esc(j.salary_text || tFor(j.lang)('Thoả thuận', 'Negotiable')) + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') + '</div></div><span class="go" aria-hidden="true">→</span>' +
           '<div class="chips">' + chips(j.must_have_tech, 'mono', 6) + '</div></a>';
       }).join('');
     }
@@ -127,34 +130,39 @@
     var slug = decodeURIComponent(location.pathname.replace(/\/+$/, '').split('/').pop() || '');
     var app = $('#app');
     api('/api/jobs?slug=' + encodeURIComponent(slug)).then(function (r) {
-      var j = r.job;
+      var j = r.job, t = tFor(j.lang);
       document.title = j.title + ' · ' + (LH.brand || 'Luna');
       var meta = $('meta[name="description"]'); if (meta) meta.setAttribute('content', (j.summary || j.title).slice(0, 155));
       var nice = (j.nice_to_have_tech || []);
       app.innerHTML =
-        '<div class="wrap"><div class="crumb"><a href="/">← Tất cả vị trí</a></div>' +
+        '<div class="wrap"><div class="crumb"><a href="/">' + t('← Tất cả vị trí', '← All roles') + '</a></div>' +
         '<header class="jd-head">' + (j.level ? '<span class="tag">' + esc(j.level) + '</span>' : '') + '<h1>' + esc(j.title) + '</h1>' +
-        '<div class="jd-meta"><span>' + esc(j.job_type || 'Full-time') + '</span><span>' + esc(j.salary_text || 'Thoả thuận') + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') +
-        (Number(j.min_years) ? '<span>Từ ' + esc(j.min_years) + ' năm kinh nghiệm</span>' : '') + '</div></header>' +
+        '<div class="jd-meta"><span>' + esc(j.job_type || 'Full-time') + '</span><span>' + esc(j.salary_text || t('Thoả thuận', 'Negotiable')) + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') +
+        (Number(j.min_years) ? '<span>' + (j.lang === 'en' ? esc(j.min_years) + '+ years of experience' : 'Từ ' + esc(j.min_years) + ' năm kinh nghiệm') + '</span>' : '') + '</div></header>' +
         '<div class="jd-grid"><div class="jd-body">' +
         (j.summary ? '<section><p style="font-size:18px">' + esc(j.summary) + '</p></section>' : '') +
-        (bullets(j.responsibilities).length ? '<section><h2>Bạn sẽ làm gì</h2>' + list(j.responsibilities) + '</section>' : '') +
-        (bullets(j.requirements).length ? '<section><h2>Bạn cần có</h2>' + list(j.requirements) + '</section>' : '') +
-        (nice.length ? '<section><h2>Là điểm cộng</h2><div class="chips">' + chips(nice, 'nice') + '</div></section>' : '') +
-        (bullets(j.benefits).length ? '<section><h2>Quyền lợi</h2>' + list(j.benefits) + '</section>' : '') +
-        '<section><h2>Cách làm việc và quy trình</h2><ul><li>Giờ làm việc 9:00–18:00, thứ Hai đến thứ Sáu.</li>' +
-        '<li>Phỏng vấn 2 vòng, online hoặc offline tuỳ vị trí.</li><li>Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.</li></ul></section></div>' +
+        (bullets(j.responsibilities).length ? '<section><h2>' + t('Bạn sẽ làm gì', 'What you will do') + '</h2>' + list(j.responsibilities) + '</section>' : '') +
+        (bullets(j.requirements).length ? '<section><h2>' + t('Bạn cần có', 'What you need') + '</h2>' + list(j.requirements) + '</section>' : '') +
+        (nice.length ? '<section><h2>' + t('Là điểm cộng', 'Nice to have') + '</h2><div class="chips">' + chips(nice, 'nice') + '</div></section>' : '') +
+        (bullets(j.benefits).length ? '<section><h2>' + t('Quyền lợi', 'Benefits') + '</h2>' + list(j.benefits) + '</section>' : '') +
+        '<section><h2>' + t('Cách làm việc và quy trình', 'How we work and the process') + '</h2><ul><li>' + t('Giờ làm việc 9:00–18:00, thứ Hai đến thứ Sáu.', 'Working hours 9:00–18:00, Monday to Friday.') + '</li>' +
+        '<li>' + t('Phỏng vấn 2 vòng, online hoặc offline tuỳ vị trí.', 'Two interview rounds, online or offline depending on the role.') + '</li><li>' + t('Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.', 'You can check your application status anytime with your application code.') + '</li></ul></section></div>' +
         '<aside class="side"><div class="facts"><dl>' +
-        ((j.must_have_tech || []).length ? '<div><dt>Công nghệ chính</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
-        ((j.domains || []).length ? '<div><dt>Lĩnh vực</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
-        '<div><dt>Mức lương</dt><dd>' + esc(j.salary_text || 'Thoả thuận') + '</dd></div>' + (j.location ? '<div><dt>Địa điểm</dt><dd>' + esc(j.location) + '</dd></div>' : '') + '</dl></div>' +
-        '<a class="btn block" href="#apply">Ứng tuyển vị trí này</a></aside></div>' +
-        '<section class="qa-box" id="qa"><h2>Hỏi đáp</h2><p class="sub">Có điều chưa rõ về vị trí này? Cứ hỏi, mình trả lời qua email. Câu hỏi chỉ mình và bạn xem được, trừ khi mình đăng công khai để các bạn khác cùng tham khảo.</p><div id="qalist"></div><div id="qaform"></div></section>' +
-        '<section class="apply-box" id="apply"><h2>Ứng tuyển</h2><p class="sub">Điền một lần, nhận mã hồ sơ để theo dõi kết quả.</p><div id="form"></div></section></div>' +
-        '<div class="stickybar" id="sticky"><a class="btn block" href="#apply">Ứng tuyển vị trí này</a></div>';
+        ((j.must_have_tech || []).length ? '<div><dt>' + t('Công nghệ chính', 'Main tech') + '</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
+        ((j.domains || []).length ? '<div><dt>' + t('Lĩnh vực', 'Domain') + '</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
+        '<div><dt>' + t('Mức lương', 'Salary') + '</dt><dd>' + esc(j.salary_text || t('Thoả thuận', 'Negotiable')) + '</dd></div>' + (j.location ? '<div><dt>' + t('Địa điểm', 'Location') + '</dt><dd>' + esc(j.location) + '</dd></div>' : '') + '</dl></div>' +
+        '<a class="btn block" href="#apply">' + t('Ứng tuyển vị trí này', 'Apply for this role') + '</a></aside></div>' +
+        '<section class="qa-box" id="qa"><h2>' + t('Hỏi đáp', 'Questions') + '</h2><p class="sub">' + t('Có điều chưa rõ về vị trí này? Cứ hỏi, mình trả lời qua email. Câu hỏi chỉ mình và bạn xem được, trừ khi mình đăng công khai để các bạn khác cùng tham khảo.', 'Anything unclear about this role? Just ask and I will reply by email. Your question is only visible to you and me, unless I publish it so other candidates can learn from it.') + '</p><div id="qalist"></div><div id="qaform"></div></section>' +
+        '<section class="apply-box" id="apply"><h2>' + t('Ứng tuyển', 'Apply') + '</h2><p class="sub">' + t('Điền một lần, nhận mã hồ sơ để theo dõi kết quả.', 'Fill it in once and get an application code to track your result.') + '</p><div id="form"></div></section></div>' +
+        '<div class="stickybar" id="sticky"><a class="btn block" href="#apply">' + t('Ứng tuyển vị trí này', 'Apply for this role') + '</a></div>';
       document.body.classList.add('has-sticky');
       mountApply($('#form'), j);
       mountQa(j);
+      if (j.lang === 'en') {
+        var en = { '/': 'Jobs', '/apply': 'Submit CV', '/track': 'Track application' };
+        Array.prototype.forEach.call(document.querySelectorAll('.nav a'), function (a) { var k = a.getAttribute('href'); if (en[k]) a.textContent = en[k]; });
+        var pv = document.querySelector('#foot a[href="/privacy.html"]'); if (pv) pv.textContent = 'Privacy';
+      }
       var form = $('#apply'), bar = $('#sticky');
       if ('IntersectionObserver' in window) {
         var seen = {};
@@ -169,31 +177,32 @@
 
   /* ---------- form ứng tuyển (dùng chung JD + kho tài năng) ---------- */
   function mountApply(el, job) {
+    var t = tFor(job && job.lang);
     el.innerHTML =
       '<form id="af" novalidate><div id="aerr" role="alert" class="alert err hide"></div>' +
-      '<div class="row2"><div class="field"><label for="f-name">Họ và tên</label><input class="in" id="f-name" name="full_name" autocomplete="name" required maxlength="100"></div>' +
-      '<div class="field"><label for="f-phone">Số điện thoại</label><input class="in" id="f-phone" name="phone_number" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" required></div></div>' +
-      '<div class="field"><label for="f-email">Email</label><input class="in" id="f-email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="120"><span class="help">Mã hồ sơ sẽ được gửi vào email này.</span></div>' +
-      '<div class="row2"><div class="field"><label for="f-addr">Tỉnh / thành phố <span class="opt">(không bắt buộc)</span></label><input class="in" id="f-addr" name="address" list="cities" autocomplete="address-level1" maxlength="60"><datalist id="cities"><option>Hà Nội</option><option>Hồ Chí Minh</option><option>Đà Nẵng</option><option>Hải Phòng</option><option>Cần Thơ</option><option>Huế</option><option>Bình Dương</option><option>Đồng Nai</option></datalist></div>' +
-      '<div class="field"><label for="f-sal">Lương mong muốn <span class="opt">(không bắt buộc)</span></label><input class="in" id="f-sal" name="expected_salary" placeholder="VD: 35 triệu, thoả thuận" maxlength="60"></div></div>' +
-      '<div class="row2"><div class="field"><label for="f-notice">Thời gian có thể bắt đầu <span class="opt">(không bắt buộc)</span></label><select class="in" id="f-notice" name="notice_period"><option value="">Chọn…</option><option>Có thể bắt đầu ngay</option><option>Sau 2 tuần</option><option>Sau 1 tháng</option><option>Sau 2 tháng trở lên</option></select></div>' +
-      '<div class="field"><label for="f-links">LinkedIn / GitHub <span class="opt">(không bắt buộc)</span></label><input class="in" id="f-links" name="links" type="url" inputmode="url" placeholder="https://" maxlength="300"></div></div>' +
-      '<div class="field"><span class="lab">CV của bạn</span><label class="drop" id="drop" for="f-cv"><span class="ico" aria-hidden="true">⬆</span><span><span class="t" id="cvt">Chọn file CV</span><br><span class="s" id="cvs">PDF, DOCX, JPG hoặc PNG · tối đa 4MB</span></span><input id="f-cv" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf"></label></div>' +
-      '<div class="field"><label for="f-note">Lời nhắn <span class="opt">(không bắt buộc)</span></label><textarea class="in" id="f-note" name="cover_note" maxlength="1200" placeholder="Vài dòng về điều bạn đang tìm kiếm."></textarea></div>' +
+      '<div class="row2"><div class="field"><label for="f-name">' + t('Họ và tên', 'Full name') + '</label><input class="in" id="f-name" name="full_name" autocomplete="name" required maxlength="100"></div>' +
+      '<div class="field"><label for="f-phone">' + t('Số điện thoại', 'Phone number') + '</label><input class="in" id="f-phone" name="phone_number" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" required></div></div>' +
+      '<div class="field"><label for="f-email">Email</label><input class="in" id="f-email" name="email" type="email" inputmode="email" autocomplete="email" required maxlength="120"><span class="help">' + t('Mã hồ sơ sẽ được gửi vào email này.', 'Your application code will be sent to this email.') + '</span></div>' +
+      '<div class="row2"><div class="field"><label for="f-addr">' + t('Tỉnh / thành phố', 'City') + ' <span class="opt">' + t('(không bắt buộc)', '(optional)') + '</span></label><input class="in" id="f-addr" name="address" list="cities" autocomplete="address-level1" maxlength="60"><datalist id="cities"><option>Hà Nội</option><option>Hồ Chí Minh</option><option>Đà Nẵng</option><option>Hải Phòng</option><option>Cần Thơ</option><option>Huế</option><option>Bình Dương</option><option>Đồng Nai</option></datalist></div>' +
+      '<div class="field"><label for="f-sal">' + t('Lương mong muốn', 'Expected salary') + ' <span class="opt">' + t('(không bắt buộc)', '(optional)') + '</span></label><input class="in" id="f-sal" name="expected_salary" placeholder="' + t('VD: 35 triệu, thoả thuận', 'e.g. 35M VND, negotiable') + '" maxlength="60"></div></div>' +
+      '<div class="row2"><div class="field"><label for="f-notice">' + t('Thời gian có thể bắt đầu', 'Available to start') + ' <span class="opt">' + t('(không bắt buộc)', '(optional)') + '</span></label><select class="in" id="f-notice" name="notice_period"><option value="">' + t('Chọn…', 'Select…') + '</option><option value="Có thể bắt đầu ngay">' + t('Có thể bắt đầu ngay', 'Available now') + '</option><option value="Sau 2 tuần">' + t('Sau 2 tuần', 'In 2 weeks') + '</option><option value="Sau 1 tháng">' + t('Sau 1 tháng', 'In 1 month') + '</option><option value="Sau 2 tháng trở lên">' + t('Sau 2 tháng trở lên', 'In 2+ months') + '</option></select></div>' +
+      '<div class="field"><label for="f-links">LinkedIn / GitHub <span class="opt">' + t('(không bắt buộc)', '(optional)') + '</span></label><input class="in" id="f-links" name="links" type="url" inputmode="url" placeholder="https://" maxlength="300"></div></div>' +
+      '<div class="field"><span class="lab">' + t('CV của bạn', 'Your CV') + '</span><label class="drop" id="drop" for="f-cv"><span class="ico" aria-hidden="true">⬆</span><span><span class="t" id="cvt">' + t('Chọn file CV', 'Choose your CV file') + '</span><br><span class="s" id="cvs">' + t('PDF, DOCX, JPG hoặc PNG · tối đa 4MB', 'PDF, DOCX, JPG or PNG · max 4MB') + '</span></span><input id="f-cv" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf"></label></div>' +
+      '<div class="field"><label for="f-note">' + t('Lời nhắn', 'Message') + ' <span class="opt">' + t('(không bắt buộc)', '(optional)') + '</span></label><textarea class="in" id="f-note" name="cover_note" maxlength="1200" placeholder="' + t('Vài dòng về điều bạn đang tìm kiếm.', 'A few lines about what you are looking for.') + '"></textarea></div>' +
       '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
-      '<label class="check" style="margin-bottom:20px"><input type="checkbox" id="f-consent"><span>Mình đồng ý để ' + esc(LH.recruiter || 'Luna') + ' lưu hồ sơ và thông tin liên hệ này để phục vụ tuyển dụng, kể cả liên hệ về các vị trí phù hợp khác. Xem <a href="/privacy.html" target="_blank" rel="noopener">chính sách quyền riêng tư</a>.</span></label>' +
-      '<button class="btn block" type="submit" id="asub">' + (job ? 'Gửi hồ sơ ứng tuyển' : 'Gửi CV vào kho tài năng') + '</button></form>';
+      '<label class="check" style="margin-bottom:20px"><input type="checkbox" id="f-consent"><span>' + (job && job.lang === 'en' ? 'I agree that ' + esc(LH.recruiter || 'Luna') + ' may store my application and contact details for recruiting purposes, including contacting me about other suitable roles. See the <a href="/privacy.html" target="_blank" rel="noopener">privacy policy</a>.' : 'Mình đồng ý để ' + esc(LH.recruiter || 'Luna') + ' lưu hồ sơ và thông tin liên hệ này để phục vụ tuyển dụng, kể cả liên hệ về các vị trí phù hợp khác. Xem <a href="/privacy.html" target="_blank" rel="noopener">chính sách quyền riêng tư</a>.') + '</span></label>' +
+      '<button class="btn block" type="submit" id="asub">' + (job ? t('Gửi hồ sơ ứng tuyển', 'Submit application') : 'Gửi CV vào kho tài năng') + '</button></form>';
 
     var file = null, form = $('#af'), err = $('#aerr'), drop = $('#drop');
     function showErr(m, focus) { err.textContent = m; err.classList.remove('hide'); err.scrollIntoView({ block: 'center', behavior: 'smooth' }); if (focus) focus.focus(); }
     function setFile(f) {
-      file = null; drop.classList.remove('has'); $('#cvt').textContent = 'Chọn file CV'; $('#cvs').textContent = 'PDF, DOCX, JPG hoặc PNG · tối đa 4MB';
+      file = null; drop.classList.remove('has'); $('#cvt').textContent = t('Chọn file CV', 'Choose your CV file'); $('#cvs').textContent = t('PDF, DOCX, JPG hoặc PNG · tối đa 4MB', 'PDF, DOCX, JPG or PNG · max 4MB');
       if (!f) return;
       var ext = (f.name.split('.').pop() || '').toLowerCase();
-      if (['pdf', 'docx', 'jpg', 'jpeg', 'png'].indexOf(ext) < 0) return showErr('Mình chỉ nhận CV dạng PDF, DOCX, JPG hoặc PNG.');
-      if (f.size > MAX_CV) return showErr('CV lớn hơn 4MB. Bạn nén file hoặc xuất lại PDF nhẹ hơn nhé.');
+      if (['pdf', 'docx', 'jpg', 'jpeg', 'png'].indexOf(ext) < 0) return showErr(t('Mình chỉ nhận CV dạng PDF, DOCX, JPG hoặc PNG.', 'Only PDF, DOCX, JPG or PNG files are accepted.'));
+      if (f.size > MAX_CV) return showErr(t('CV lớn hơn 4MB. Bạn nén file hoặc xuất lại PDF nhẹ hơn nhé.', 'Your CV is larger than 4MB. Please compress it or export a lighter PDF.'));
       err.classList.add('hide'); file = f; drop.classList.add('has');
-      $('#cvt').textContent = f.name; $('#cvs').textContent = (f.size / 1024 < 1024 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB') + ' · bấm để đổi file';
+      $('#cvt').textContent = f.name; $('#cvs').textContent = (f.size / 1024 < 1024 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB') + t(' · bấm để đổi file', ' · click to change');
     }
     $('#f-cv').addEventListener('change', function (e) { setFile(e.target.files[0]); });
     ['dragenter', 'dragover'].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add('over'); }); });
@@ -204,14 +213,14 @@
       e.preventDefault();
       err.classList.add('hide');
       var v = function (id) { return $(id).value.trim(); };
-      if (v('#f-name').length < 2) return showErr('Bạn nhập giúp mình họ tên nhé.', $('#f-name'));
-      if (v('#f-phone').replace(/\D/g, '').length < 9) return showErr('Số điện thoại chưa đúng, bạn kiểm tra lại nhé.', $('#f-phone'));
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('#f-email'))) return showErr('Email chưa đúng định dạng.', $('#f-email'));
-      if (!file) return showErr('Bạn chưa chọn file CV.');
-      if (!$('#f-consent').checked) return showErr('Bạn cần đồng ý cho mình lưu hồ sơ để tiếp tục.', $('#f-consent'));
+      if (v('#f-name').length < 2) return showErr(t('Bạn nhập giúp mình họ tên nhé.', 'Please enter your full name.'), $('#f-name'));
+      if (v('#f-phone').replace(/\D/g, '').length < 9) return showErr(t('Số điện thoại chưa đúng, bạn kiểm tra lại nhé.', 'The phone number looks incorrect, please check it.'), $('#f-phone'));
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('#f-email'))) return showErr(t('Email chưa đúng định dạng.', 'The email format looks incorrect.'), $('#f-email'));
+      if (!file) return showErr(t('Bạn chưa chọn file CV.', 'Please choose your CV file.'));
+      if (!$('#f-consent').checked) return showErr(t('Bạn cần đồng ý cho mình lưu hồ sơ để tiếp tục.', 'You need to agree to the storage of your application to continue.'), $('#f-consent'));
 
       var btn = $('#asub'), label = btn.textContent;
-      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Đang gửi…';
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + t('Đang gửi…', 'Sending…');
       var fd = new FormData();
       var put = function (k, val) { fd.append(k, val == null ? '' : val); };
       put('job_slug', job ? job.slug : ''); put('full_name', v('#f-name')); put('phone_number', v('#f-phone')); put('email', v('#f-email'));
@@ -241,11 +250,12 @@
   }
 
   function success(el, r, job) {
-    el.innerHTML = '<div class="stub"><div class="stub-top"><div class="kicker"><span class="moon" aria-hidden="true"></span>Đã nhận hồ sơ</div>' +
+    var t = tFor(job && job.lang);
+    el.innerHTML = '<div class="stub"><div class="stub-top"><div class="kicker"><span class="moon" aria-hidden="true"></span>' + t('Đã nhận hồ sơ', 'Application received') + '</div>' +
       '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Luna')) + '</div>' +
-      '<div class="code"><span id="ccode">' + esc(r.code) + '</span><button type="button" id="ccopy">Sao chép</button></div></div>' +
-      '<div class="stub-bot"><p>Mình đã gửi email xác nhận tới <b>' + esc(r.email) + '</b> (nhớ xem cả mục Spam). Giữ mã này để tra cứu tiến độ bất cứ lúc nào, cùng với email hoặc số điện thoại bạn vừa nhập.</p>' +
-      '<div class="hero-actions" style="margin-top:18px"><a class="btn" href="/track?code=' + encodeURIComponent(r.code) + '">Tra cứu hồ sơ</a><a class="btn ghost" href="/">Xem vị trí khác</a></div></div></div>';
+      '<div class="code"><span id="ccode">' + esc(r.code) + '</span><button type="button" id="ccopy">' + t('Sao chép', 'Copy') + '</button></div></div>' +
+      '<div class="stub-bot"><p>' + (job && job.lang === 'en' ? 'I have sent a confirmation email to <b>' + esc(r.email) + '</b> (please check Spam too). Keep this code to check your status anytime, together with the email or phone number you just entered.' : 'Mình đã gửi email xác nhận tới <b>' + esc(r.email) + '</b> (nhớ xem cả mục Spam). Giữ mã này để tra cứu tiến độ bất cứ lúc nào, cùng với email hoặc số điện thoại bạn vừa nhập.') + '</p>' +
+      '<div class="hero-actions" style="margin-top:18px"><a class="btn" href="/track?code=' + encodeURIComponent(r.code) + '">' + t('Tra cứu hồ sơ', 'Track my application') + '</a><a class="btn ghost" href="/">' + t('Xem vị trí khác', 'See other roles') + '</a></div></div></div>';
     $('#ccopy').addEventListener('click', function () { copyText(r.code, this); });
     el.scrollIntoView({ block: 'start', behavior: 'smooth' });
     var bar = $('#sticky'); if (bar) bar.classList.add('gone');
@@ -317,25 +327,26 @@
     }).join('') + '</article>';
   }
   function mountQa(job) {
+    var t = tFor(job.lang);
     var list = $('#qalist'), box = $('#qaform'); if (!list || !box) return;
     api('/api/questions?job=' + encodeURIComponent(job.slug)).then(function (r) {
       list.innerHTML = r.threads && r.threads.length ? '<div class="qa-list">' + r.threads.map(threadHtml).join('') + '</div>' : '';
     }).catch(function () {});
     box.innerHTML =
-      '<form id="qf" novalidate><h3 class="qa-h">Đặt câu hỏi</h3><div id="qerr" role="alert" class="alert err hide"></div>' +
-      '<div class="row2"><div class="field"><label for="q-name">Tên của bạn</label><input class="in" id="q-name" name="name" autocomplete="name" maxlength="80" required></div>' +
-      '<div class="field"><label for="q-email">Email</label><input class="in" id="q-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required><span class="help">Mình trả lời qua email này. Email không hiển thị công khai.</span></div></div>' +
-      '<div class="field"><label for="q-body">Câu hỏi</label><textarea class="in" id="q-body" name="body" maxlength="1500" placeholder="VD: Vị trí này có làm remote được không?" required></textarea></div>' +
+      '<form id="qf" novalidate><h3 class="qa-h">' + t('Đặt câu hỏi', 'Ask a question') + '</h3><div id="qerr" role="alert" class="alert err hide"></div>' +
+      '<div class="row2"><div class="field"><label for="q-name">' + t('Tên của bạn', 'Your name') + '</label><input class="in" id="q-name" name="name" autocomplete="name" maxlength="80" required></div>' +
+      '<div class="field"><label for="q-email">Email</label><input class="in" id="q-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required><span class="help">' + t('Mình trả lời qua email này. Email không hiển thị công khai.', 'I will reply to this email. Your email is never shown publicly.') + '</span></div></div>' +
+      '<div class="field"><label for="q-body">' + t('Câu hỏi', 'Your question') + '</label><textarea class="in" id="q-body" name="body" maxlength="1500" placeholder="' + t('VD: Vị trí này có làm remote được không?', 'e.g. Can this role be done remotely?') + '" required></textarea></div>' +
       '<input class="hp" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
-      '<button class="btn" type="submit" id="qsub">Gửi câu hỏi</button></form>';
+      '<button class="btn" type="submit" id="qsub">' + t('Gửi câu hỏi', 'Send question') + '</button></form>';
     var form = $('#qf'), err = $('#qerr');
     form.addEventListener('submit', function (e) {
       e.preventDefault(); err.classList.add('hide');
-      var btn = $('#qsub'); btn.disabled = true; btn.textContent = 'Đang gửi…';
+      var btn = $('#qsub'); btn.disabled = true; btn.textContent = t('Đang gửi…', 'Sending…');
       api('/api/questions', { action: 'ask', job_slug: job.slug, name: form.elements.name.value, email: form.elements.email.value, body: form.elements.body.value, website: form.elements.website.value }).then(function (r) {
-        box.innerHTML = '<div class="alert info" role="status"><b>Mình đã nhận câu hỏi của bạn.</b><br>Mình đã gửi email kèm link riêng để bạn xem câu trả lời và nhắn tiếp. Nếu chưa thấy, bạn kiểm tra mục Spam, hoặc <a href="' + esc(r.link || '#') + '">mở hội thoại ngay</a>.</div>';
+        box.innerHTML = '<div class="alert info" role="status">' + (job.lang === 'en' ? '<b>I have received your question.</b><br>I have emailed you a private link to see my answer and reply. If you cannot find it, check Spam, or <a href="' + esc(r.link || '#') + '">open the conversation now</a>.' : '<b>Mình đã nhận câu hỏi của bạn.</b><br>Mình đã gửi email kèm link riêng để bạn xem câu trả lời và nhắn tiếp. Nếu chưa thấy, bạn kiểm tra mục Spam, hoặc <a href="' + esc(r.link || '#') + '">mở hội thoại ngay</a>.') + '</div>';
       }).catch(function (e2) {
-        err.textContent = e2.message; err.classList.remove('hide'); btn.disabled = false; btn.textContent = 'Gửi câu hỏi';
+        err.textContent = e2.message; err.classList.remove('hide'); btn.disabled = false; btn.textContent = t('Gửi câu hỏi', 'Send question');
       });
     });
   }

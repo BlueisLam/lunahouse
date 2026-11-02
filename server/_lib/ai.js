@@ -179,7 +179,8 @@ async function scoreBatch(job, cands) {
 }
 
 // ---------- Dán JD → điền form ----------
-async function jdFromText(text) {
+async function jdFromText(text, lang) {
+  const en = lang === 'en';
   const prompt = `Đọc đoạn mô tả công việc (JD) dưới đây và trả về DUY NHẤT một JSON object, không thêm chữ nào khác:
 {
  "title": "tên vị trí",
@@ -187,16 +188,16 @@ async function jdFromText(text) {
  "job_type": "Full-time | Part-time | Freelance | Contract | Internship",
  "salary_text": "mức lương nếu JD có ghi, nếu không thì ''",
  "location": "địa điểm làm việc nếu JD có ghi (tỉnh/thành phố, hoặc Remote / Hybrid), nếu không thì ''",
- "summary": "1–2 câu tóm tắt vị trí, tiếng Việt",
- "responsibilities": "mỗi ý một dòng, tiếng Việt, không ký hiệu đầu dòng",
- "requirements": "mỗi ý một dòng, tiếng Việt, không ký hiệu đầu dòng",
- "benefits": "mỗi ý một dòng, tiếng Việt, không ký hiệu đầu dòng; '' nếu JD không nêu",
+ "summary": "1–2 câu tóm tắt vị trí, ${en ? 'tiếng Anh' : 'tiếng Việt'}",
+ "responsibilities": "mỗi ý một dòng, ${en ? 'tiếng Anh' : 'tiếng Việt'}, không ký hiệu đầu dòng",
+ "requirements": "mỗi ý một dòng, ${en ? 'tiếng Anh' : 'tiếng Việt'}, không ký hiệu đầu dòng",
+ "benefits": "mỗi ý một dòng, ${en ? 'tiếng Anh' : 'tiếng Việt'}, không ký hiệu đầu dòng; '' nếu JD không nêu",
  "must_have_tech": ["công nghệ bắt buộc"],
  "nice_to_have_tech": ["công nghệ ưu tiên / là điểm cộng"],
  "domains": ["lĩnh vực dự án, ví dụ Banking, E-commerce"],
  "min_years": số năm kinh nghiệm tối thiểu (số, 0 nếu không nêu)
 }
-Quy tắc: Địa điểm chỉ đưa vào trường location. KHÔNG đưa số lượng tuyển, tên khách hàng hay thông tin nhận diện công ty vào bất kỳ trường nào. Không bịa thông tin không có trong JD.
+Quy tắc: Địa điểm chỉ đưa vào trường location. KHÔNG đưa số lượng tuyển, tên khách hàng hay thông tin nhận diện công ty vào bất kỳ trường nào. Không bịa thông tin không có trong JD.${en ? '\nNGÔN NGỮ ĐẦU RA: viết bằng tiếng Anh tự nhiên, chuyên nghiệp cho TẤT CẢ trường chữ (title, summary, responsibilities, requirements, benefits, salary_text, location). Nếu JD gốc là tiếng Việt thì dịch sang tiếng Anh; giữ nguyên tên công nghệ.' : '\nNGÔN NGỮ ĐẦU RA: tiếng Việt cho các trường mô tả; tên công nghệ và chức danh quen thuộc có thể giữ tiếng Anh. Nếu JD gốc là tiếng Anh thì dịch sang tiếng Việt.'}
 
 --- JD ---
 ${String(text).slice(0, 12000)}`;

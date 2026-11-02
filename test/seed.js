@@ -20,6 +20,12 @@ module.exports = async function seed(fake) {
   jobs.ba = await ins('lh_jobs', { slug: 'business-analyst', title: 'Business Analyst (Banking)', level: 'Mid', job_type: 'Full-time', salary_text: 'Thoả thuận', location: 'Remote', status: 'open', min_years: 2,
     summary: 'Làm cầu nối giữa nghiệp vụ ngân hàng và đội kỹ thuật.', responsibilities: 'Phân tích và viết tài liệu yêu cầu\nChạy workshop với khách hàng', requirements: 'Từ 2 năm kinh nghiệm BA\nHiểu nghiệp vụ ngân hàng là lợi thế',
     must_have_tech: ['Jira', 'Confluence'], nice_to_have_tech: ['SQL'], domains: ['Banking'] });
+  jobs.en = await ins('lh_jobs', { slug: 'senior-unity-developer', title: 'Senior Unity Developer', lang: 'en', level: 'Senior', job_type: 'Full-time', salary_text: '', location: 'Ho Chi Minh City', status: 'open', min_years: 4,
+    summary: 'Build and ship mobile games used by millions of players, working closely with designers and QA.',
+    responsibilities: 'Develop gameplay features in Unity and C#\nOptimize performance on low-end mobile devices\nWork with designers to prototype and iterate quickly',
+    requirements: '4+ years of experience with Unity and C#\nShipped at least one mobile title\nSolid understanding of game architecture and profiling',
+    benefits: 'Premium health insurance\nLearning budget\nFlexible hybrid schedule',
+    must_have_tech: ['Unity', 'C#'], nice_to_have_tech: ['Addressables', 'Firebase'], domains: ['Gaming'] });
   jobs.draft = await ins('lh_jobs', { slug: 'devops-engineer', title: 'DevOps Engineer', level: 'Senior', status: 'draft', min_years: 4, must_have_tech: ['Kubernetes', 'AWS', 'Terraform'], nice_to_have_tech: ['ArgoCD'], domains: [] });
 
   const people = [

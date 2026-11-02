@@ -3,7 +3,7 @@
 const crypto = require('crypto');
 
 const DEFAULTS = {
-  lh_jobs: () => ({ level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft' }),
+  lh_jobs: () => ({ level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', lang: 'vi', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft' }),
   lh_candidates: () => ({ full_name: '', date_of_birth: '', address: '', phone_number: '', email: '', gender: 'Male', positions: [], english_level: '', total_years_experience: 0, years_experience_by_role: {}, project_domains: [], technologies: [], cv_upload_date: new Date().toISOString(), is_open_to_work: true, job_type_preference: '', expected_salary: '', notice_period: '', headline: '', notes: '', links: '', cv_path: '', cv_filename: '', cv_text: '', source: 'apply', parse_status: 'none', parse_error: '', dup_of: null }),
   lh_applications: () => ({ job_id: null, status: 'new', public_note: '', internal_note: '', cover_note: '', match_score: null, match_reason: '', next_action: '', next_action_date: null, ip_hash: '' }),
   lh_activities: () => ({ type: 'note', note: '', meta: {} }),

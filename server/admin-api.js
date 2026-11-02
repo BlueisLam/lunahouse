@@ -45,6 +45,7 @@ function jobPatch(b) {
   const o = {};
   const S = (k, max) => { if (b[k] !== undefined) o[k] = U.clean(b[k], max); };
   S('title', 120); S('level', 30); S('salary_text', 80); S('location', 120); S('summary', 600);
+  if (b.lang !== undefined) o.lang = b.lang === 'en' ? 'en' : 'vi';
   if (b.job_type !== undefined) o.job_type = JOB_TYPES.includes(b.job_type) ? b.job_type : 'Full-time';
   ['responsibilities', 'requirements', 'benefits'].forEach(k => { if (b[k] !== undefined) o[k] = String(b[k]).replace(/\r/g, '').slice(0, 6000).trim(); });
   ['must_have_tech', 'nice_to_have_tech', 'domains'].forEach(k => { if (b[k] !== undefined) o[k] = U.toArr(b[k]); });
@@ -224,8 +225,9 @@ A['jobs.delete'] = async (b) => {
 A['jobs.fromText'] = async (b) => {
   const text = U.clean(b.text, 12000);
   if (text.length < 40) throw new U.HttpError(400, 'Dán nội dung JD dài hơn một chút nhé.');
-  const raw = await AI.jdFromText(text);
-  const p = jobPatch({ ...raw, status: 'draft' });
+  const lang = b.lang === 'en' ? 'en' : 'vi';
+  const raw = await AI.jdFromText(text, lang);
+  const p = jobPatch({ ...raw, lang, status: 'draft' });
   return { job: p };
 };
 

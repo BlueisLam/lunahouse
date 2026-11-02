@@ -424,18 +424,19 @@
     var label = { open: 'Đang mở', draft: 'Nháp', paused: 'Tạm dừng', closed: 'Đã đóng' };
     $('#view').innerHTML = '<div class="ph"><h1>Việc làm</h1><span class="sp"></span><button class="b pri" data-act="newjob" type="button">+ Tạo job</button></div><div class="box">' +
       (S.jobs.length ? S.jobs.map(function (j) {
-        return '<div class="jrow" data-act="job" data-id="' + j.id + '"><div><div class="t1">' + esc(j.title) + '</div><div class="t2">' + esc([j.level, j.job_type, j.salary_text].filter(Boolean).join(' · ')) + ' · ' + (j.must_have_tech || []).slice(0, 4).map(esc).join(', ') + '</div></div><span class="apc muted num">' + (count[j.id] || 0) + ' hồ sơ</span><span class="stt ' + j.status + '">' + label[j.status] + '</span></div>';
+        return '<div class="jrow" data-act="job" data-id="' + j.id + '"><div><div class="t1">' + esc(j.title) + (j.lang === 'en' ? ' <span class="stt draft">EN</span>' : '') + '</div><div class="t2">' + esc([j.level, j.job_type, j.salary_text].filter(Boolean).join(' · ')) + ' · ' + (j.must_have_tech || []).slice(0, 4).map(esc).join(', ') + '</div></div><span class="apc muted num">' + (count[j.id] || 0) + ' hồ sơ</span><span class="stt ' + j.status + '">' + label[j.status] + '</span></div>';
       }).join('') : '<div class="none" style="border:0;padding:36px 20px">Chưa có job nào. Bấm "Tạo job", bạn có thể dán nguyên JD để AI điền sẵn form.</div>') + '</div>';
   };
   function openJob(id) {
-    var j = id === 'new' ? { id: '', title: '', level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '' }
+    var j = id === 'new' ? { id: '', title: '', level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '', lang: 'vi' }
       : S.jobs.filter(function (x) { return x.id === id; })[0];
     if (!j) return;
     S.open = { type: 'job', id: id }; setHash('job/' + id);
+    var langSel = '<div class="fld" style="margin-top:10px"><label class="lbl">Ngôn ngữ JD (AI viết và trang job hiển thị theo ngôn ngữ này)</label><select class="i2" data-k="lang"><option value="vi"' + (j.lang === 'en' ? '' : ' selected') + '>Tiếng Việt</option><option value="en"' + (j.lang === 'en' ? ' selected' : '') + '>English</option></select></div>';
     var sel = function (k, opts, val) { return '<select class="i2" data-k="' + k + '">' + opts.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (val === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>'; };
     drawer('<div class="dh"><div style="flex:1;min-width:0"><h2>' + esc(j.title || 'Job mới') + '</h2><div class="s">' + (j.slug ? esc(location.origin + '/jobs/' + j.slug) : 'Chưa lưu') + '</div></div><button class="b sm" data-act="close" type="button">Đóng</button></div><div class="db">' +
-      (j.id ? '' : '<div class="sec"><span class="lbl">Dán JD để AI điền sẵn</span><textarea class="i2" id="jdtext" placeholder="Dán nguyên nội dung JD (từ khách hàng hoặc nơi khác)…" style="min-height:110px"></textarea><div style="margin-top:8px"><button class="b" data-act="jdai" type="button">Điền tự động bằng AI</button></div></div>') +
-      '<div class="sec"><span class="lbl">Thông tin chính</span>' + field('Tên vị trí', 'title', j.title) +
+      (j.id ? '' : '<div class="sec"><span class="lbl">Dán JD để AI điền sẵn</span><textarea class="i2" id="jdtext" placeholder="Dán nguyên nội dung JD (từ khách hàng hoặc nơi khác)…" style="min-height:110px"></textarea>' + langSel + '<div style="margin-top:8px"><button class="b" data-act="jdai" type="button">Điền tự động bằng AI</button></div></div>') +
+      '<div class="sec"><span class="lbl">Thông tin chính</span>' + field('Tên vị trí', 'title', j.title) + (j.id ? langSel + '<div class="muted" style="font-size:12.5px;margin:-4px 0 12px">Đổi ngôn ngữ chỉ đổi nhãn và form trên trang job. Nội dung JD bạn tự sửa, hoặc tạo lại bằng AI.</div>' : '') +
       '<div class="g2"><div class="fld"><label class="lbl">Cấp độ</label>' + sel('level', [['', '—'], ['Intern', 'Intern'], ['Junior', 'Junior'], ['Mid', 'Mid'], ['Senior', 'Senior'], ['Lead', 'Lead']], j.level) + '</div><div class="fld"><label class="lbl">Loại hình</label>' + sel('job_type', ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'].map(function (x) { return [x, x]; }), j.job_type) + '</div></div>' +
       '<div class="g2">' + field('Mức lương hiển thị', 'salary_text', j.salary_text, { ph: 'VD: 25–40 triệu, Thoả thuận' }) + field('Địa điểm làm việc', 'location', j.location, { ph: 'VD: Hồ Chí Minh, Hà Nội, Remote' }) + '</div><div class="g2">' + field('Kinh nghiệm tối thiểu (năm)', 'min_years', j.min_years, { type: 'number', step: '0.5' }) + '</div>' +
       '<div class="fld"><label class="lbl">Trạng thái</label>' + sel('status', [['draft', 'Nháp (chưa hiện)'], ['open', 'Đang mở (hiện công khai)'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']], j.status) + '</div></div>' +
@@ -594,7 +595,7 @@
       case 'jdai': {
         var txt = $('#jdtext').value.trim(); if (txt.length < 40) return toast('Dán nội dung JD dài hơn nhé.', true);
         t.disabled = true; t.textContent = 'AI đang đọc…';
-        return api('jobs.fromText', { text: txt }).then(function (r) {
+        return api('jobs.fromText', { text: txt, lang: ($('.drawer [data-k="lang"]') || {}).value || 'vi' }).then(function (r) {
           Object.keys(r.job).forEach(function (k) {
             var el = $('.drawer [data-k="' + k + '"]'); if (!el) return;
             el.value = Array.isArray(r.job[k]) ? r.job[k].join(', ') : r.job[k];
