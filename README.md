@@ -78,7 +78,7 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 - Bản xem thử `*.pages.dev` luôn `noindex`; canonical luôn trỏ về `https://lunahouse.click` (đổi bằng biến `SEO_ORIGIN` nếu cần).
 
 ## Báo cáo (admin → Báo cáo)
-- Xem theo ngày / tháng / quý / năm, giờ Việt Nam. Preset: hôm nay, 7 ngày, 30 ngày, tháng này, quý này, năm nay, tuỳ chọn. Tải CSV.
+- Xem theo ngày / tuần (ISO, bắt đầu thứ Hai) / tháng / quý / năm, giờ Việt Nam. Preset: hôm nay, tuần này, 7 ngày, 30 ngày, tháng này, quý này, năm nay, tuỳ chọn. Tải CSV.
 - "Hồ sơ nhận" = số application tạo trong kỳ. Các mốc (screening, gửi khách, phỏng vấn, offer, nhận việc, từ chối, rút) = số lần hồ sơ chuyển vào trạng thái đó trong kỳ, lấy từ nhật ký `lh_activities`. Có bảng theo job, tỉ lệ chuyển đổi và số ngày trung bình từ lúc nộp đến nhận việc.
 - Logic thuần ở `server/_lib/report.js` (có test), action `report.get` trong `server/admin-api.js`.
 

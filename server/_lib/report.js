@@ -7,7 +7,7 @@
  *  - các mốc còn lại = số lần hồ sơ CHUYỂN VÀO trạng thái đó trong kỳ (lấy từ nhật ký hoạt động)
  */
 const OFFSET_MS = 7 * 3600e3;
-const GROUPS = ['day', 'month', 'quarter', 'year'];
+const GROUPS = ['day', 'week', 'month', 'quarter', 'year'];
 const METRICS = ['received', 'pool', 'screening', 'submitted', 'interview', 'offer', 'hired', 'rejected', 'withdrawn'];
 const STATUS_TO_METRIC = { screening: 'screening', submitted: 'submitted', interview1: 'interview', interview2: 'interview', offer: 'offer', hired: 'hired', rejected: 'rejected', withdrawn: 'withdrawn' };
 
@@ -16,14 +16,32 @@ const localDate = iso => new Date(new Date(iso).getTime() + OFFSET_MS); // đọ
 const ymd = d => d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
 const isDay = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && !isNaN(Date.parse(s));
 
+/** Thứ Hai của tuần chứa ngày d (tuần ISO, bắt đầu thứ Hai). */
+function mondayOf(d) {
+  const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7));
+  return x;
+}
+/** Số tuần ISO và năm ISO của một ngày. */
+function isoWeek(d) {
+  const thu = new Date(mondayOf(d).getTime() + 3 * 86400e3);
+  const y = thu.getUTCFullYear(), jan1 = new Date(Date.UTC(y, 0, 1));
+  return { year: y, week: Math.floor((thu - jan1) / 86400e3 / 7) + 1 };
+}
 function keyOf(group, d) {
   const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1;
+  if (group === 'week') return ymd(mondayOf(d));       // khoá = ngày thứ Hai của tuần
   if (group === 'year') return String(y);
   if (group === 'quarter') return y + '-Q' + (Math.floor((m - 1) / 3) + 1);
   if (group === 'month') return y + '-' + pad(m);
   return ymd(d);
 }
 function labelOf(group, key) {
+  if (group === 'week') {
+    const mon = new Date(key + 'T00:00:00Z'), sun = new Date(mon.getTime() + 6 * 86400e3), w = isoWeek(mon);
+    const dm = x => pad(x.getUTCDate()) + '/' + pad(x.getUTCMonth() + 1);
+    return 'Tuần ' + w.week + '/' + w.year + ' (' + dm(mon) + '–' + dm(sun) + ')';
+  }
   if (group === 'day') { const [y, m, d] = key.split('-'); return d + '/' + m + '/' + y; }
   if (group === 'month') { const [y, m] = key.split('-'); return 'Tháng ' + Number(m) + '/' + y; }
   if (group === 'quarter') { const [y, q] = key.split('-'); return 'Quý ' + q.slice(1) + '/' + y; }
@@ -37,6 +55,7 @@ function bucketKeys(group, from, to) {
     const k = keyOf(group, cur);
     if (keys[keys.length - 1] !== k) keys.push(k);
     if (group === 'day') cur = new Date(cur.getTime() + 86400e3);
+    else if (group === 'week') cur = new Date(mondayOf(cur).getTime() + 7 * 86400e3);
     else if (group === 'month') cur = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1));
     else if (group === 'quarter') cur = new Date(Date.UTC(cur.getUTCFullYear(), (Math.floor(cur.getUTCMonth() / 3) + 1) * 3, 1));
     else cur = new Date(Date.UTC(cur.getUTCFullYear() + 1, 0, 1));

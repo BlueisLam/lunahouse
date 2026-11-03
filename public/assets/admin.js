@@ -385,10 +385,11 @@
 
   /* ---------- báo cáo ---------- */
   var REP_COLS = [['received', 'Hồ sơ nhận'], ['pool', 'Vào kho'], ['screening', 'Screening'], ['submitted', 'Gửi khách'], ['interview', 'Phỏng vấn'], ['offer', 'Offer'], ['hired', 'Nhận việc'], ['rejected', 'Từ chối'], ['withdrawn', 'Rút']];
-  var REP_PRESETS = [['today', 'Hôm nay'], ['7d', '7 ngày'], ['30d', '30 ngày'], ['month', 'Tháng này'], ['quarter', 'Quý này'], ['year', 'Năm nay'], ['custom', 'Tuỳ chọn']];
+  var REP_PRESETS = [['today', 'Hôm nay'], ['week', 'Tuần này'], ['7d', '7 ngày'], ['30d', '30 ngày'], ['month', 'Tháng này'], ['quarter', 'Quý này'], ['year', 'Năm nay'], ['custom', 'Tuỳ chọn']];
   function repRange(p) {
     var t = todayISO(), y = t.slice(0, 4), m = Number(t.slice(5, 7)), q = Math.floor((m - 1) / 3) * 3 + 1, pd = function (n) { return (n < 10 ? '0' : '') + n; };
     if (p === 'today') return { from: t, to: t, group: 'day' };
+    if (p === 'week') { var dn = new Date(); var back = (dn.getDay() + 6) % 7; return { from: plusDays(-back), to: t, group: 'day' }; }
     if (p === '7d') return { from: plusDays(-6), to: t, group: 'day' };
     if (p === '30d') return { from: plusDays(-29), to: t, group: 'day' };
     if (p === 'month') return { from: y + '-' + pd(m) + '-01', to: t, group: 'day' };
@@ -406,7 +407,7 @@
   }
   function paintReport() {
     if (S.tab !== 'report') return;
-    var r = S.rep, d = r.data, G = [['day', 'Ngày'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
+    var r = S.rep, d = r.data, G = [['day', 'Ngày'], ['week', 'Tuần'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
     var ctl = '<div class="rep-ctl"><div class="seg" role="group" aria-label="Khoảng thời gian">' + REP_PRESETS.map(function (p) {
       return '<button type="button" class="' + (r.preset === p[0] ? 'on' : '') + '" data-act="rpreset" data-id="' + p[0] + '">' + p[1] + '</button>';
     }).join('') + '</div>' +

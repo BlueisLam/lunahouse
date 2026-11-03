@@ -574,6 +574,20 @@ test('Kho tài năng: không vào pipeline/phễu; trang tra cứu báo "đã l�
   assert.ok(rep.totals.pool >= 1); assert.ok(!rep.by_job.some(j => j.title === 'Kho tài năng'));
 });
 
+test('báo cáo theo tuần: tuần ISO bắt đầu thứ Hai, giờ VN, kỳ trống vẫn hiện', async () => {
+  const R = require('../server/_lib/report');
+  // 2026-11-02 là thứ Hai (tuần 45). 03:00 UTC chủ nhật 8/11 = 10:00 VN vẫn trong tuần 45; 18:00 UTC chủ nhật = 01:00 thứ Hai 9/11 → tuần 46.
+  const rep = R.buildReport({
+    apps: [{ id: 'a', job_id: 'j', created_at: '2026-11-02T01:00:00Z' }, { id: 'b', job_id: 'j', created_at: '2026-11-08T03:00:00Z' }, { id: 'c', job_id: 'j', created_at: '2026-11-08T18:00:00Z' }],
+    acts: [], jobs: { j: 'Java' }, from: '2026-10-26', to: '2026-11-15', group: 'week',
+  });
+  assert.deepStrictEqual(rep.rows.map(r => r.label), ['Tuần 44/2026 (26/10–01/11)', 'Tuần 45/2026 (02/11–08/11)', 'Tuần 46/2026 (09/11–15/11)']);
+  assert.deepStrictEqual(rep.rows.map(r => r.received), [0, 2, 1]);
+  assert.strictEqual(R.labelOf('week', '2025-12-29'), 'Tuần 1/2026 (29/12–04/01)');   // tuần vắt qua năm
+  const r2 = await admin('report.get', { from: '2026-01-01', to: '2026-12-31', group: 'week' });
+  assert.strictEqual(r2.rows.length, 53);
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {
