@@ -531,6 +531,32 @@ test('rút hồ sơ rồi nộp lại: mở lại đúng hồ sơ cũ, giữ mã
   assert.match(g.cv_url, /^https:\/\/fake\.supabase\.co\/sign\//); assert.ok(!('cv_path' in g.candidate));
 });
 
+test('báo cáo: gom theo ngày/tháng/quý/năm giờ VN, đếm mốc chuyển trạng thái, theo job, giới hạn đầu vào', async () => {
+  const R = require('../server/_lib/report');
+  const rep = (o) => admin('report.get', o);
+  const today = R.ymd(new Date(Date.now() + 7 * 3600e3));
+  const y = today.slice(0, 4);
+  const yr = await rep({ from: y + '-01-01', to: y + '-12-31', group: 'year' });
+  assert.strictEqual(yr.rows.length, 1);
+  assert.ok(yr.totals.received >= 1);                                   // các hồ sơ đã tạo trong các test trước
+  const mo = await rep({ from: y + '-01-01', to: y + '-12-31', group: 'month' });
+  assert.strictEqual(mo.rows.length, 12);
+  assert.strictEqual(mo.rows.reduce((n, r) => n + r.received, 0), mo.totals.received);
+  const q = await rep({ from: y + '-01-01', to: y + '-12-31', group: 'quarter' });
+  assert.deepStrictEqual(q.rows.map(r => r.label), ['Quý 1/' + y, 'Quý 2/' + y, 'Quý 3/' + y, 'Quý 4/' + y]);
+  assert.strictEqual(q.totals.received, yr.totals.received);
+  const dd = await rep({ from: today, to: today, group: 'day' });
+  assert.strictEqual(dd.rows.length, 1); assert.strictEqual(dd.totals.received, yr.totals.received); // test chạy trong cùng ngày
+  assert.ok(dd.by_job.some(j => j.title === 'Kho tài năng') || dd.by_job.length >= 1);
+  assert.ok(yr.totals.withdrawn >= 1 && yr.totals.rejected >= 1);       // có hồ sơ rút/từ chối từ các test trước
+  assert.strictEqual(yr.by_job.reduce((n, j) => n + j.received, 0), yr.totals.received);
+  await assert.rejects(() => rep({ from: '2015-01-01', to: today, group: 'year' }), /5 năm/);
+  await assert.rejects(() => rep({ from: '2024-01-01', to: today, group: 'day' }), /theo ngày/);
+  // ranh giới múi giờ: 18:00 UTC ngày 31/10 là 01:00 ngày 1/11 giờ VN
+  const edge = R.buildReport({ apps: [{ id: 'x', job_id: null, created_at: '2026-10-31T18:00:00Z' }], acts: [], jobs: {}, from: '2026-10-01', to: '2026-11-30', group: 'month' });
+  assert.deepStrictEqual(edge.rows.map(r => r.received), [0, 1]);
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {

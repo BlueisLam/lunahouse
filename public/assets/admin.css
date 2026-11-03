@@ -208,3 +208,23 @@ select.i2 { padding-right: 6px; }
 .li.unread .t1 { font-weight: 800; }
 .li.unread .t2 { color: var(--ink); }
 .li.unread .sdot { background: var(--accent); width: 10px; height: 10px; }
+
+/* Báo cáo */
+.rep-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 16px; }
+.rep-ctl .sp { flex: 1; }
+.rep-ctl .rl { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--ink-2); }
+.rep-ctl .rl .i2 { width: auto; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; padding: 8px 12px; font: 500 13.5px var(--body); color: var(--ink-2); cursor: pointer; border-left: 1px solid var(--line); }
+.seg button:first-child { border-left: 0; }
+.seg button:hover { background: var(--accent-soft); }
+.seg button.on { background: var(--ink); color: var(--bg); }
+.tbl { overflow-x: auto; }
+table.rep { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.rep th, table.rep td { padding: 9px 12px; border-top: 1px solid var(--line-2); text-align: left; white-space: nowrap; }
+table.rep thead th { border-top: 0; font: 600 12px var(--body); color: var(--muted); text-transform: none; }
+table.rep .n { text-align: right; }
+table.rep .z { color: var(--muted); opacity: .55; }
+table.rep tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
+table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; background: var(--accent); margin-right: 8px; vertical-align: middle; opacity: .55; }
+@media (max-width: 900px) { .metrics[style*="repeat(6"] { grid-template-columns: repeat(3, 1fr) !important; } .metrics[style*="repeat(6"] > div:nth-child(4) { border-left: 0; } }

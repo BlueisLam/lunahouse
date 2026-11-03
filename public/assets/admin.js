@@ -15,7 +15,7 @@
     f: { q: '', tech: [], dom: [], minY: '', openOnly: false, sort: 'new', techLimit: 12, domLimit: 8 },
     pjob: '', pollN: 0, pollT: null, unread: 0, threads: [],
   };
-  var NAV = [['overview', 'Tổng quan', '◧'], ['candidates', 'Ứng viên', '▤'], ['pipeline', 'Pipeline', '◈'], ['jobs', 'Việc làm', '▦'], ['matching', 'Matching', '◎'], ['inbox', 'Hỏi đáp', '✉']];
+  var NAV = [['overview', 'Tổng quan', '◧'], ['candidates', 'Ứng viên', '▤'], ['pipeline', 'Pipeline', '◈'], ['jobs', 'Việc làm', '▦'], ['matching', 'Matching', '◎'], ['report', 'Báo cáo', '▥'], ['inbox', 'Hỏi đáp', '✉']];
 
   /* ---------- tiện ích ---------- */
   function api(action, data) {
@@ -376,6 +376,71 @@
     }).catch(fail);
   }
 
+  /* ---------- báo cáo ---------- */
+  var REP_COLS = [['received', 'Hồ sơ nhận'], ['screening', 'Screening'], ['submitted', 'Gửi khách'], ['interview', 'Phỏng vấn'], ['offer', 'Offer'], ['hired', 'Nhận việc'], ['rejected', 'Từ chối'], ['withdrawn', 'Rút']];
+  var REP_PRESETS = [['today', 'Hôm nay'], ['7d', '7 ngày'], ['30d', '30 ngày'], ['month', 'Tháng này'], ['quarter', 'Quý này'], ['year', 'Năm nay'], ['custom', 'Tuỳ chọn']];
+  function repRange(p) {
+    var t = todayISO(), y = t.slice(0, 4), m = Number(t.slice(5, 7)), q = Math.floor((m - 1) / 3) * 3 + 1, pd = function (n) { return (n < 10 ? '0' : '') + n; };
+    if (p === 'today') return { from: t, to: t, group: 'day' };
+    if (p === '7d') return { from: plusDays(-6), to: t, group: 'day' };
+    if (p === '30d') return { from: plusDays(-29), to: t, group: 'day' };
+    if (p === 'month') return { from: y + '-' + pd(m) + '-01', to: t, group: 'day' };
+    if (p === 'quarter') return { from: y + '-' + pd(q) + '-01', to: t, group: 'month' };
+    return { from: y + '-01-01', to: t, group: 'month' };
+  }
+  VIEWS.report = function () {
+    if (!S.rep) S.rep = Object.assign({ preset: 'quarter', data: null, busy: false }, repRange('quarter'));
+    paintReport();
+    if (!S.rep.data) loadReport();
+  };
+  function loadReport() {
+    var r = S.rep; r.busy = true; paintReport();
+    api('report.get', { from: r.from, to: r.to, group: r.group }).then(function (d) { r.data = d; r.busy = false; paintReport(); }).catch(function (e) { r.busy = false; paintReport(); fail(e); });
+  }
+  function paintReport() {
+    if (S.tab !== 'report') return;
+    var r = S.rep, d = r.data, G = [['day', 'Ngày'], ['month', 'Tháng'], ['quarter', 'Quý'], ['year', 'Năm']];
+    var ctl = '<div class="rep-ctl"><div class="seg" role="group" aria-label="Khoảng thời gian">' + REP_PRESETS.map(function (p) {
+      return '<button type="button" class="' + (r.preset === p[0] ? 'on' : '') + '" data-act="rpreset" data-id="' + p[0] + '">' + p[1] + '</button>';
+    }).join('') + '</div>' +
+      '<label class="rl">Từ <input class="i2" type="date" id="rfrom" value="' + esc(r.from) + '"></label><label class="rl">đến <input class="i2" type="date" id="rto" value="' + esc(r.to) + '"></label>' +
+      '<label class="rl">Xem theo <select class="i2" id="rgroup" style="width:auto">' + G.map(function (g) { return '<option value="' + g[0] + '"' + (r.group === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select></label>' +
+      '<span class="sp"></span><button class="b" type="button" data-act="rcsv"' + (d ? '' : ' disabled') + '>Tải CSV</button></div>';
+    var body = '';
+    if (!d) body = '<div class="box"><div class="none">' + (r.busy ? 'Đang tính báo cáo…' : 'Chưa có dữ liệu.') + '</div></div>';
+    else {
+      var T = d.totals, pc = function (v) { return v == null ? '–' : v + '%'; };
+      var max = Math.max.apply(null, d.rows.map(function (x) { return x.received; }).concat([1]));
+      body = '<div class="metrics" style="grid-template-columns:repeat(6,1fr)">' + [['received', 'Hồ sơ nhận'], ['interview', 'Phỏng vấn'], ['offer', 'Offer'], ['hired', 'Nhận việc'], ['rejected', 'Từ chối'], ['withdrawn', 'Ứng viên rút']].map(function (c) {
+        return '<div><b>' + T[c[0]] + '</b><span>' + c[1] + '</span></div>';
+      }).join('') + '</div>' +
+        '<p class="muted" style="margin:-6px 0 16px">Tỉ lệ hồ sơ vào phỏng vấn <b>' + pc(d.rates.interview) + '</b> · phỏng vấn ra offer <b>' + pc(d.rates.offer) + '</b> · hồ sơ đến nhận việc <b>' + pc(d.rates.hired) + '</b>' +
+        (d.avg_days_to_hire != null ? ' · trung bình <b>' + d.avg_days_to_hire + '</b> ngày từ lúc nộp đến nhận việc' : '') + '</p>' +
+        '<section class="box"><h2>Theo ' + esc(G.filter(function (g) { return g[0] === d.group; })[0][1].toLowerCase()) + '</h2><div class="tbl"><table class="rep"><thead><tr><th>Kỳ</th>' + REP_COLS.map(function (c) { return '<th class="n">' + c[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        d.rows.map(function (x) {
+          return '<tr><td>' + esc(x.label) + '</td>' + REP_COLS.map(function (c) {
+            var v = x[c[0]], bar = c[0] === 'received' && v ? '<i class="bar" style="width:' + Math.round(v / max * 56) + 'px"></i>' : '';
+            return '<td class="n num' + (v ? '' : ' z') + '">' + bar + v + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody><tfoot><tr><td>Tổng</td>' + REP_COLS.map(function (c) { return '<td class="n num">' + T[c[0]] + '</td>'; }).join('') + '</tr></tfoot></table></div></section>' +
+        '<section class="box" style="margin-top:16px"><h2>Theo job</h2><div class="tbl"><table class="rep"><thead><tr><th>Job</th>' + REP_COLS.map(function (c) { return '<th class="n">' + c[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        (d.by_job.length ? d.by_job.map(function (x) { return '<tr><td>' + esc(x.title) + '</td>' + REP_COLS.map(function (c) { return '<td class="n num' + (x[c[0]] ? '' : ' z') + '">' + x[c[0]] + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="9" class="none" style="border:0">Chưa có hoạt động nào trong khoảng này.</td></tr>') +
+        '</tbody></table></div></section>' +
+        '<p class="muted" style="margin-top:12px;font-size:12.5px">Giờ Việt Nam. "Hồ sơ nhận" tính theo ngày nộp. Các mốc còn lại tính theo ngày hồ sơ được chuyển sang trạng thái đó (Phỏng vấn gồm vòng 1 và vòng 2).</p>';
+    }
+    $('#view').innerHTML = '<div class="ph"><h1>Báo cáo</h1></div>' + ctl + (r.busy && d ? '<p class="muted">Đang cập nhật…</p>' : '') + body;
+  }
+  function repCsv() {
+    var d = S.rep && S.rep.data; if (!d) return;
+    var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var head = ['Kỳ'].concat(REP_COLS.map(function (c) { return c[1]; }));
+    var lines = [head].concat(d.rows.map(function (x) { return [x.label].concat(REP_COLS.map(function (c) { return x[c[0]]; })); }))
+      .concat([['Tổng'].concat(REP_COLS.map(function (c) { return d.totals[c[0]]; })), [], ['Theo job']], d.by_job.map(function (x) { return [x.title].concat(REP_COLS.map(function (c) { return x[c[0]]; })); }));
+    var blob = new Blob(['\ufeff' + lines.map(function (l) { return l.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bao-cao-' + d.from + '-' + d.to + '.csv';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
+
   /* ---------- pipeline ---------- */
   VIEWS.pipeline = function () {
     var jobs = S.jobs;
@@ -550,6 +615,8 @@
     if (t.hasAttribute('data-tech') && !act) { var v = t.getAttribute('data-tech'), i = S.f.tech.indexOf(v); if (i >= 0) S.f.tech.splice(i, 1); else S.f.tech.push(v); return paintCands(); }
     if (t.hasAttribute('data-dom') && !act) { var d = t.getAttribute('data-dom'), j = S.f.dom.indexOf(d); if (j >= 0) S.f.dom.splice(j, 1); else S.f.dom.push(d); return paintCands(); }
     switch (act) {
+      case 'rpreset': { var pv = id; S.rep.preset = pv; if (pv !== 'custom') Object.assign(S.rep, repRange(pv)); S.rep.data = null; return pv === 'custom' ? paintReport() : loadReport(); }
+      case 'rcsv': return repCsv();
       case 'logout': return logout();
       case 'close': return closeLayer();
       case 'thread': return openThread(id);
@@ -637,6 +704,10 @@
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.id === 'co') { S.f.openOnly = t.checked; paintCands(); }
+    if (S.rep && (t.id === 'rfrom' || t.id === 'rto' || t.id === 'rgroup')) {
+      if (t.id === 'rgroup') S.rep.group = t.value; else { S.rep[t.id === 'rfrom' ? 'from' : 'to'] = t.value; S.rep.preset = 'custom'; }
+      if (S.rep.from && S.rep.to) { S.rep.data = null; loadReport(); }
+    }
     if (t.id === 'csort') { S.f.sort = t.value; paintCands(); }
     if (t.id === 'pjob') { S.pjob = t.value; paintPipe(); }
     if (t.id === 'mjob') { MATCH.job = t.value; MATCH.res = null; $('#mres').innerHTML = ''; $('#mprog').innerHTML = ''; }

@@ -250,6 +250,28 @@ A['apps.list'] = async () => {
   };
 };
 
+A['report.get'] = async (b) => {
+  const R = require('./_lib/report');
+  const today = R.ymd(new Date(Date.now() + 7 * 3600e3));
+  let from = R.isDay(b.from) ? b.from : today.slice(0, 4) + '-01-01', to = R.isDay(b.to) ? b.to : today;
+  if (from > to) [from, to] = [to, from];
+  if ((Date.parse(to) - Date.parse(from)) / 86400e3 > 366 * 5) throw new U.HttpError(400, 'Khoảng thời gian tối đa 5 năm.');
+  const group = R.GROUPS.includes(b.group) ? b.group : 'month';
+  if (group === 'day' && (Date.parse(to) - Date.parse(from)) / 86400e3 > 400) throw new U.HttpError(400, 'Xem theo ngày tối đa khoảng 13 tháng. Chọn xem theo tháng hoặc quý.');
+  const db = sb();
+  const all = async (mk) => { const out = []; for (let p = 0; p < 30; p++) { const r = must(await mk().range(p * 1000, p * 1000 + 999), 'report'); out.push(...r); if (r.length < 1000) break; } return out; };
+  const { startISO, endISO } = R.bounds(from, to);
+  // Hồ sơ tạo trong kỳ + hồ sơ có đổi trạng thái trong kỳ (có thể tạo từ trước kỳ).
+  const acts = await all(() => db.from('lh_activities').select('application_id,type,meta,created_at').eq('type', 'status').gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
+  const created = await all(() => db.from('lh_applications').select('id,job_id,created_at,status').gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
+  const have = new Set(created.map(a => a.id));
+  const need = [...new Set(acts.map(x => x.application_id))].filter(id => !have.has(id));
+  const older = [];
+  for (let i = 0; i < need.length; i += 150) older.push(...must(await db.from('lh_applications').select('id,job_id,created_at,status').in('id', need.slice(i, i + 150)), 'report apps'));
+  const jobs = Object.fromEntries(must(await db.from('lh_jobs').select('id,title'), 'jobs').map(j => [j.id, j.title]));
+  return R.buildReport({ apps: created.concat(older), acts, jobs, from, to, group });
+};
+
 A['apps.get'] = async (b) => {
   const db = sb();
   const app = must(await db.from('lh_applications').select('*').eq('id', b.id).maybeSingle(), 'app');
