@@ -2,12 +2,13 @@
 /**
  * Báo cáo tuyển dụng theo ngày / tháng / quý / năm (giờ Việt Nam, UTC+7).
  * Hàm thuần, không đụng DB: nhận danh sách application + hoạt động đổi trạng thái rồi gom theo kỳ.
- *  - received  = số hồ sơ được tạo trong kỳ
+ *  - received  = số hồ sơ nộp vào một job cụ thể trong kỳ
+ *  - pool      = số người nộp vào Kho tài năng (không gắn job), tính riêng, KHÔNG nằm trong phễu
  *  - các mốc còn lại = số lần hồ sơ CHUYỂN VÀO trạng thái đó trong kỳ (lấy từ nhật ký hoạt động)
  */
 const OFFSET_MS = 7 * 3600e3;
 const GROUPS = ['day', 'month', 'quarter', 'year'];
-const METRICS = ['received', 'screening', 'submitted', 'interview', 'offer', 'hired', 'rejected', 'withdrawn'];
+const METRICS = ['received', 'pool', 'screening', 'submitted', 'interview', 'offer', 'hired', 'rejected', 'withdrawn'];
 const STATUS_TO_METRIC = { screening: 'screening', submitted: 'submitted', interview1: 'interview', interview2: 'interview', offer: 'offer', hired: 'hired', rejected: 'rejected', withdrawn: 'withdrawn' };
 
 const pad = n => String(n).padStart(2, '0');
@@ -58,20 +59,21 @@ function buildReport({ apps, acts, jobs, from, to, group }) {
   const totals = zero();
   const byJob = {};
   const appById = Object.fromEntries(apps.map(a => [a.id, a]));
-  const jobRow = id => (byJob[id || ''] = byJob[id || ''] || { job_id: id || null, title: id ? ((jobs && jobs[id]) || '(job đã xoá)') : 'Kho tài năng', ...zero() });
+  const jobRow = id => (byJob[id || ''] = byJob[id || ''] || { job_id: id || null, title: (jobs && jobs[id]) || '(job đã xoá)', ...zero() });
   const bump = (iso, metric, jobId) => {
     const k = keyOf(group, localDate(iso));
     if (rows[k]) rows[k][metric]++;
-    totals[metric]++; jobRow(jobId)[metric]++;
+    totals[metric]++;
+    if (jobId) jobRow(jobId)[metric]++;           // hồ sơ kho không vào bảng theo job
   };
 
-  for (const a of apps) if (a.created_at && inRange(a.created_at, b)) bump(a.created_at, 'received', a.job_id);
+  for (const a of apps) if (a.created_at && inRange(a.created_at, b)) bump(a.created_at, a.job_id ? 'received' : 'pool', a.job_id);
   let hireDays = 0, hireN = 0;
   for (const x of acts) {
     if (x.type !== 'status' || !x.meta || !x.created_at || !inRange(x.created_at, b)) continue;
     const metric = STATUS_TO_METRIC[x.meta.to];
     if (!metric || x.meta.from === x.meta.to) continue;
-    const a = appById[x.application_id]; if (!a) continue;
+    const a = appById[x.application_id]; if (!a || !a.job_id) continue;   // hồ sơ kho không đi qua phễu
     bump(x.created_at, metric, a.job_id);
     if (metric === 'hired' && a.created_at) { hireDays += Math.max(0, (new Date(x.created_at) - new Date(a.created_at)) / 86400e3); hireN++; }
   }

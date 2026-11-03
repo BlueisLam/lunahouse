@@ -52,6 +52,8 @@ exports.handler = U.wrap(async (event) => {
   }
 
   const st = BY_KEY[app.status] || BY_KEY.new;
+  // Hồ sơ trong Kho tài năng (không gắn job) không đi qua các bước tuyển dụng.
+  const pool = !app.job_id && app.status === 'new';
   return U.json(200, {
     code: app.code,
     candidate_name: cand.full_name,
@@ -59,12 +61,13 @@ exports.handler = U.wrap(async (event) => {
     applied_at: app.created_at,
     updated_at: app.updated_at,
     status: app.status,
-    status_label: st.pub,
-    hint: st.hint,
+    status_label: pool ? 'Đã lưu vào kho tài năng' : st.pub,
+    hint: pool ? 'Mình đã lưu hồ sơ của bạn. Khi có vị trí phù hợp, mình sẽ liên hệ trực tiếp. Bạn không cần chờ phản hồi cho một vị trí cụ thể.' : st.hint,
+    pool,
     public_note: app.public_note || '',
     failed_after,
     terminal: TERMINAL.includes(app.status),
     flow: FLOW.map(k => ({ key: k, label: BY_KEY[k].pub })),
-    timeline,
+    timeline: pool ? [] : timeline,
   });
 });

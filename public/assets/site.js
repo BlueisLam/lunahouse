@@ -285,14 +285,15 @@
         items = (r.timeline || []).filter(function (t) { return t.status !== r.status; }).map(function (t) { return { cls: 'done', label: t.label, at: t.at }; });
         items.push({ cls: 'end', label: r.status_label, at: events[r.status], sub: r.failed_after ? 'Dừng sau bước: ' + r.failed_after : '' });
       }
+      if (r.pool) items = [];
       out.innerHTML = '<div class="stub"><div class="stub-top"><div class="kicker"><span class="moon" aria-hidden="true"></span>Hồ sơ của ' + esc(r.candidate_name) + '</div>' +
         '<div class="ttl">' + esc(r.job_title || 'Kho tài năng ' + (LH.brand || 'Luna')) + '</div><div class="code"><span>' + esc(r.code) + '</span></div></div>' +
         '<div class="stub-bot"><div class="state ' + (good ? 'good' : r.terminal && !good ? 'end' : '') + '">' + esc(r.status_label) + '</div>' +
         '<p class="hint">' + esc(r.hint) + '</p>' +
         (r.public_note ? '<div class="note"><b>' + (r.status === 'rejected' ? 'Feedback từ ' : 'Lời nhắn từ ') + esc(LH.recruiter || 'nhà tuyển dụng') + '</b>' + esc(r.public_note) + '</div>' : '') +
-        '<ol class="tl">' + items.map(function (i) {
+        (items.length ? '<ol class="tl">' + items.map(function (i) {
           return '<li class="' + i.cls + '">' + esc(i.label) + (i.at ? '<span class="d">' + fmtDate(i.at, true) + '</span>' : '') + (i.sub ? '<span class="d">' + esc(i.sub) + '</span>' : '') + '</li>';
-        }).join('') + '</ol>' +
+        }).join('') + '</ol>' : '') +
         '<p class="when">Nộp ngày ' + fmtDate(r.applied_at) + ' · cập nhật ' + fmtDate(r.updated_at, true) + '</p>' +
         '<div class="hero-actions" style="margin-top:18px">' + (r.terminal ? '' : '<button class="btn ghost small" type="button" id="wd">Rút hồ sơ</button>') +
         '<button class="btn ghost small" type="button" id="again">Tra cứu mã khác</button></div></div></div>';

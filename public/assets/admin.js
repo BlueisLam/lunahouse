@@ -78,7 +78,9 @@
     return c;
   }
   function jobTitle(id) { var j = S.jobs.filter(function (x) { return x.id === id; })[0]; return j ? j.title : ''; }
-  function activeApps() { return S.apps.filter(function (a) { return TERM.indexOf(a.status) < 0; }); }
+  /* Hồ sơ "Kho tài năng" (không gắn job) chỉ là pool, không đi qua pipeline. */
+  function jobApps() { return S.apps.filter(function (a) { return !!a.job_id; }); }
+  function activeApps() { return jobApps().filter(function (a) { return TERM.indexOf(a.status) < 0; }); }
 
   /* ---------- đăng nhập ---------- */
   function showLogin() {
@@ -147,8 +149,10 @@
   VIEWS.overview = function () {
     var act = activeApps(), today = todayISO(), end = plusDays(7);
     var open = S.jobs.filter(function (j) { return j.status === 'open'; }).length;
-    var interviewing = S.apps.filter(function (a) { return a.status === 'interview1' || a.status === 'interview2'; }).length;
-    var fresh = S.apps.filter(function (a) { return a.status === 'new'; });
+    var interviewing = jobApps().filter(function (a) { return a.status === 'interview1' || a.status === 'interview2'; }).length;
+    var fresh = jobApps().filter(function (a) { return a.status === 'new'; });
+    var poolSince = new Date(Date.now() - 14 * 864e5).toISOString();
+    var pool = S.apps.filter(function (a) { return !a.job_id && a.status === 'new' && a.created_at >= poolSince; });
     var due = act.filter(function (a) { return a.next_action_date && a.next_action_date <= end; }).sort(function (a, b) { return a.next_action_date < b.next_action_date ? -1 : 1; });
     var attn = S.cands.filter(function (c) { return c.parse_status === 'failed' || c.dup_of; });
     var row = function (a, right) {
@@ -162,6 +166,9 @@
       }).join('') : '<div class="none">Không có việc nào đến hạn. Đặt "việc tiếp theo" và ngày hạn trong từng application để thấy ở đây.</div>') + '</section>' +
       '<section class="box"><h2>Hồ sơ mới <span class="ct">' + fresh.length + '</span></h2>' +
       (fresh.length ? fresh.slice(0, 8).map(function (a) { return row(a, '<span class="dt num">' + ago(a.created_at) + '</span>'); }).join('') : '<div class="none">Chưa có hồ sơ mới nào cần xem.</div>') + '</section></div>' +
+      (pool.length ? '<section class="box" style="margin-top:16px"><h2>Mới vào kho tài năng <span class="ct">14 ngày qua · ' + pool.length + '</span></h2>' + pool.slice(0, 8).map(function (a) {
+        return '<div class="li" data-act="cand" data-id="' + a.candidate_id + '"><div class="tx"><div class="t1">' + esc(a.candidate_name) + '</div><div class="t2">Chưa gắn job · dùng Matching khi có vị trí phù hợp</div></div><span class="dt num">' + ago(a.created_at) + '</span></div>';
+      }).join('') + '</section>' : '') +
       (attn.length ? '<section class="box" style="margin-top:16px"><h2>Cần xử lý <span class="ct">' + attn.length + '</span></h2>' + attn.slice(0, 8).map(function (c) {
         return '<div class="li" data-act="cand" data-id="' + c.id + '"><div class="tx"><div class="t1">' + esc(c.full_name) + '</div><div class="t2">' + esc(c.cv_filename || c.email) + '</div></div>' +
           (c.parse_status === 'failed' ? '<span class="badge err">Đọc CV lỗi</span>' : '<span class="badge dup">Có thể trùng</span>') + '</div>';
@@ -377,7 +384,7 @@
   }
 
   /* ---------- báo cáo ---------- */
-  var REP_COLS = [['received', 'Hồ sơ nhận'], ['screening', 'Screening'], ['submitted', 'Gửi khách'], ['interview', 'Phỏng vấn'], ['offer', 'Offer'], ['hired', 'Nhận việc'], ['rejected', 'Từ chối'], ['withdrawn', 'Rút']];
+  var REP_COLS = [['received', 'Hồ sơ nhận'], ['pool', 'Vào kho'], ['screening', 'Screening'], ['submitted', 'Gửi khách'], ['interview', 'Phỏng vấn'], ['offer', 'Offer'], ['hired', 'Nhận việc'], ['rejected', 'Từ chối'], ['withdrawn', 'Rút']];
   var REP_PRESETS = [['today', 'Hôm nay'], ['7d', '7 ngày'], ['30d', '30 ngày'], ['month', 'Tháng này'], ['quarter', 'Quý này'], ['year', 'Năm nay'], ['custom', 'Tuỳ chọn']];
   function repRange(p) {
     var t = todayISO(), y = t.slice(0, 4), m = Number(t.slice(5, 7)), q = Math.floor((m - 1) / 3) * 3 + 1, pd = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -423,10 +430,10 @@
             return '<td class="n num' + (v ? '' : ' z') + '">' + bar + v + '</td>';
           }).join('') + '</tr>';
         }).join('') + '</tbody><tfoot><tr><td>Tổng</td>' + REP_COLS.map(function (c) { return '<td class="n num">' + T[c[0]] + '</td>'; }).join('') + '</tr></tfoot></table></div></section>' +
-        '<section class="box" style="margin-top:16px"><h2>Theo job</h2><div class="tbl"><table class="rep"><thead><tr><th>Job</th>' + REP_COLS.map(function (c) { return '<th class="n">' + c[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
-        (d.by_job.length ? d.by_job.map(function (x) { return '<tr><td>' + esc(x.title) + '</td>' + REP_COLS.map(function (c) { return '<td class="n num' + (x[c[0]] ? '' : ' z') + '">' + x[c[0]] + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="9" class="none" style="border:0">Chưa có hoạt động nào trong khoảng này.</td></tr>') +
+        '<section class="box" style="margin-top:16px"><h2>Theo job</h2><div class="tbl"><table class="rep"><thead><tr><th>Job</th>' + REP_COLS.filter(function (c) { return c[0] !== 'pool'; }).map(function (c) { return '<th class="n">' + c[1] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        (d.by_job.length ? d.by_job.map(function (x) { return '<tr><td>' + esc(x.title) + '</td>' + REP_COLS.filter(function (c) { return c[0] !== 'pool'; }).map(function (c) { return '<td class="n num' + (x[c[0]] ? '' : ' z') + '">' + x[c[0]] + '</td>'; }).join('') + '</tr>'; }).join('') : '<tr><td colspan="8" class="none" style="border:0">Chưa có hoạt động nào trong khoảng này.</td></tr>') +
         '</tbody></table></div></section>' +
-        '<p class="muted" style="margin-top:12px;font-size:12.5px">Giờ Việt Nam. "Hồ sơ nhận" tính theo ngày nộp. Các mốc còn lại tính theo ngày hồ sơ được chuyển sang trạng thái đó (Phỏng vấn gồm vòng 1 và vòng 2).</p>';
+        '<p class="muted" style="margin-top:12px;font-size:12.5px">Giờ Việt Nam. "Hồ sơ nhận" là hồ sơ nộp vào một job cụ thể; người nộp vào Kho tài năng đếm riêng ở cột "Vào kho" và không nằm trong phễu. Các mốc còn lại tính theo ngày hồ sơ được chuyển sang trạng thái đó (Phỏng vấn gồm vòng 1 và vòng 2).</p>';
     }
     $('#view').innerHTML = '<div class="ph"><h1>Báo cáo</h1></div>' + ctl + (r.busy && d ? '<p class="muted">Đang cập nhật…</p>' : '') + body;
   }
@@ -435,7 +442,7 @@
     var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var head = ['Kỳ'].concat(REP_COLS.map(function (c) { return c[1]; }));
     var lines = [head].concat(d.rows.map(function (x) { return [x.label].concat(REP_COLS.map(function (c) { return x[c[0]]; })); }))
-      .concat([['Tổng'].concat(REP_COLS.map(function (c) { return d.totals[c[0]]; })), [], ['Theo job']], d.by_job.map(function (x) { return [x.title].concat(REP_COLS.map(function (c) { return x[c[0]]; })); }));
+      .concat([['Tổng'].concat(REP_COLS.map(function (c) { return d.totals[c[0]]; })), [], ['Theo job']], d.by_job.map(function (x) { return [x.title].concat(REP_COLS.map(function (c) { return c[0] === 'pool' ? '' : x[c[0]]; })); }));
     var blob = new Blob(['\ufeff' + lines.map(function (l) { return l.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'bao-cao-' + d.from + '-' + d.to + '.csv';
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
@@ -449,8 +456,8 @@
   };
   function paintPipe() {
     if (S.tab !== 'pipeline' || !$('#kan')) return;
-    var today = todayISO(), list = S.apps.filter(function (a) { return !S.pjob || a.job_id === S.pjob; });
-    if (!list.length) { $('#kan').innerHTML = '<div class="box"><div class="none" style="border:0;padding:36px 20px">Chưa có application nào. Ứng viên nộp hồ sơ trên trang công khai sẽ xuất hiện ở đây, hoặc dùng Matching để thêm người từ kho CV.</div></div>'; return; }
+    var today = todayISO(), list = jobApps().filter(function (a) { return !S.pjob || a.job_id === S.pjob; });
+    if (!list.length) { $('#kan').innerHTML = '<div class="box"><div class="none" style="border:0;padding:36px 20px">Chưa có application nào. Ứng viên nộp vào một job cụ thể sẽ xuất hiện ở đây. Người nộp vào Kho tài năng nằm ở mục Ứng viên; khi có job mới, dùng Matching để thêm người từ kho CV.</div></div>'; return; }
     $('#kan').innerHTML = '<div class="kan">' + S.stages.map(function (s) {
       var items = list.filter(function (a) { return a.status === s.key; });
       return '<section class="col ' + stClass(s.key) + (items.length ? '' : ' empty') + '"><h3><span class="sdot"></span>' + esc(s.label) + '<span class="ct">' + items.length + '</span></h3>' +

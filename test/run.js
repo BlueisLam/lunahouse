@@ -553,8 +553,25 @@ test('báo cáo: gom theo ngày/tháng/quý/năm giờ VN, đếm mốc chuyển
   await assert.rejects(() => rep({ from: '2015-01-01', to: today, group: 'year' }), /5 năm/);
   await assert.rejects(() => rep({ from: '2024-01-01', to: today, group: 'day' }), /theo ngày/);
   // ranh giới múi giờ: 18:00 UTC ngày 31/10 là 01:00 ngày 1/11 giờ VN
-  const edge = R.buildReport({ apps: [{ id: 'x', job_id: null, created_at: '2026-10-31T18:00:00Z' }], acts: [], jobs: {}, from: '2026-10-01', to: '2026-11-30', group: 'month' });
+  const edge = R.buildReport({ apps: [{ id: 'x', job_id: 'j1', created_at: '2026-10-31T18:00:00Z' }, { id: 'y', job_id: null, created_at: '2026-10-31T18:00:00Z' }], acts: [{ application_id: 'y', type: 'status', meta: { from: 'new', to: 'interview1' }, created_at: '2026-11-02T03:00:00Z' }], jobs: { j1: 'Java' }, from: '2026-10-01', to: '2026-11-30', group: 'month' });
   assert.deepStrictEqual(edge.rows.map(r => r.received), [0, 1]);
+  assert.deepStrictEqual(edge.rows.map(r => r.pool), [0, 1]);          // hồ sơ kho đếm riêng
+  assert.strictEqual(edge.totals.interview, 0);                          // và không đi vào phễu
+  assert.deepStrictEqual(edge.by_job.map(j => j.title), ['Java']);
+});
+
+test('Kho tài năng: không vào pipeline/phễu; trang tra cứu báo "đã lưu vào kho", không có dòng thời gian', async () => {
+  const ap = await H.invoke(H.F('apply'), { body: applyBody({ job_slug: '', full_name: 'Đỗ Kho Tài', email: 'pool.kho@example.com', phone_number: '0912009988' }), headers: ip(52) });
+  assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
+  assert.strictEqual(ap.json.job_title, null);
+  const tr = (await H.invoke(H.F('track'), { body: { code: ap.json.code, contact: 'pool.kho@example.com' } })).json;
+  assert.strictEqual(tr.pool, true); assert.match(tr.status_label, /kho tài năng/); assert.deepStrictEqual(tr.timeline, []);
+  const list = (await admin('apps.list')).applications;
+  assert.ok(list.some(a => a.code === ap.json.code && !a.job_id));       // vẫn là bản ghi để tra cứu
+  const R = require('../server/_lib/report');
+  const today = R.ymd(new Date(Date.now() + 7 * 3600e3));
+  const rep = await admin('report.get', { from: today, to: today, group: 'day' });
+  assert.ok(rep.totals.pool >= 1); assert.ok(!rep.by_job.some(j => j.title === 'Kho tài năng'));
 });
 
 (async () => {
