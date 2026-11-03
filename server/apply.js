@@ -103,7 +103,7 @@ exports.handler = U.wrap(async (event) => {
 
   // Lưu CV vào bucket private
   const safe = U.slugify(cv.name.replace(/\.[^.]+$/, '')) + '.' + cv.kind;
-  const path = `${cand.id}/${Date.now()}-${safe}`;
+  const path = `${cand.id}/${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${safe}`;
   const up = await db.storage.from(BUCKET).upload(path, cv.buffer, { contentType: U.MIME[cv.kind], upsert: false });
   if (up.error) throw new Error('upload: ' + up.error.message);
   must(await db.from('lh_candidates').update({
