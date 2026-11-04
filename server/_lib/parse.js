@@ -28,7 +28,9 @@ async function parseCandidate(id, opts = {}) {
       const kind = U.sniffFile(buffer);
       if (kind === 'docx') {
         const mammoth = require('mammoth');
-        text = String((await mammoth.extractRawText({ buffer })).value || '').trim();
+        // Cloudflare dùng bản mammoth cho trình duyệt (chỉ nhận arrayBuffer), Node dùng bản chỉ nhận buffer: đưa cả hai.
+        const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        text = String((await mammoth.extractRawText({ buffer, arrayBuffer })).value || '').trim();
         if (!text) throw new Error('File DOCX không có nội dung văn bản.');
       } else {
         throw new Error('Chưa lấy được chữ từ CV. Hãy mở trang admin trên trình duyệt để đọc PDF, hoặc dùng file PDF/DOCX có chữ (không phải ảnh chụp).');

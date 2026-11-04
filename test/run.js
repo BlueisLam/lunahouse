@@ -588,6 +588,23 @@ test('báo cáo theo tuần: tuần ISO bắt đầu thứ Hai, giờ VN, kỳ t
   assert.strictEqual(r2.rows.length, 53);
 });
 
+test('đọc CV Word (.docx): chạy được cả bản mammoth của Node lẫn bản trình duyệt mà Cloudflare dùng', async () => {
+  const JSZip = require('jszip');
+  const z = new JSZip();
+  z.file('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  z.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  z.file('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Phạm Lan, C&amp;B Specialist. 6 năm kinh nghiệm Compensation and Benefits, Payroll, HRIS, làm việc với nhiều dự án IT lớn tại Việt Nam.</w:t></w:r></w:p></w:body></w:document>');
+  const buf = await z.generateAsync({ type: 'nodebuffer' });
+  // 1) bản trình duyệt (Cloudflare) chỉ nhận arrayBuffer: đúng lỗi "Could not find file in options" khi chỉ đưa buffer
+  const bz = require('mammoth/browser/unzip.js');
+  await assert.rejects(() => bz.openZip({ buffer: buf }), /Could not find file in options/);
+  await bz.openZip({ arrayBuffer: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) });
+  // 2) luồng thật: upload .docx → AI đọc (không có chữ từ trình duyệt)
+  const up = await admin('candidates.upload', { name: 'Pham Lan C&B Specialist (updated 11.2026).docx', data: buf.toString('base64') });
+  const r = await admin('candidates.parse', { id: up.id });
+  assert.strictEqual(r.ok, true, JSON.stringify(r));
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {
