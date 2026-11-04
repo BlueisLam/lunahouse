@@ -461,13 +461,47 @@
     if (!list.length) { $('#kan').innerHTML = '<div class="box"><div class="none" style="border:0;padding:36px 20px">Chưa có application nào. Ứng viên nộp vào một job cụ thể sẽ xuất hiện ở đây. Người nộp vào Kho tài năng nằm ở mục Ứng viên; khi có job mới, dùng Matching để thêm người từ kho CV.</div></div>'; return; }
     $('#kan').innerHTML = '<div class="kan">' + S.stages.map(function (s) {
       var items = list.filter(function (a) { return a.status === s.key; });
-      return '<section class="col ' + stClass(s.key) + (items.length ? '' : ' empty') + '"><h3><span class="sdot"></span>' + esc(s.label) + '<span class="ct">' + items.length + '</span></h3>' +
+      return '<section class="col ' + stClass(s.key) + (items.length ? '' : ' empty') + '" data-st="' + s.key + '"><h3><span class="sdot"></span>' + esc(s.label) + '<span class="ct">' + items.length + '</span></h3>' +
         items.map(function (a) {
-          return '<div class="card" data-act="app" data-id="' + a.id + '"><div class="t1"><span>' + esc(a.candidate_name) + '</span>' + (a.match_score != null ? '<span class="sc">' + a.match_score + '</span>' : '') + '</div>' +
+          return '<div class="card" draggable="true" data-act="app" data-id="' + a.id + '"><div class="t1"><span>' + esc(a.candidate_name) + '</span>' + (a.match_score != null ? '<span class="sc">' + a.match_score + '</span>' : '') + '</div>' +
             '<div class="t2">' + esc(a.job_title) + '</div>' + ((a.next_action || a.next_action_date) ? '<div class="t3"><span>' + esc(a.next_action) + '</span>' + (a.next_action_date ? '<span class="num ' + (a.next_action_date < today && TERM.indexOf(a.status) < 0 ? 'late' : '') + '">' + shortDate(a.next_action_date) + '</span>' : '') + '</div>' : '') + '</div>';
         }).join('') + '</section>';
     }).join('') + '</div>';
   }
+
+
+  /* ---------- kéo thả trong pipeline (chuột; không gửi email) ---------- */
+  var dragId = null;
+  function moveApp(id, to) {
+    var a = S.apps.filter(function (x) { return x.id === id; })[0];
+    if (!a || a.status === to) return;
+    var from = a.status; a.status = to; paintPipe(); renderNav();
+    // Chỉ đổi trạng thái: KHÔNG kèm notify nên không gửi email cho ứng viên.
+    api('apps.update', { id: id, status: to }).then(function () {
+      toast('Đã chuyển ' + a.candidate_name + ' sang ' + stLabel(to));
+      return refreshApps().then(function () { if (S.tab === 'pipeline') paintPipe(); });
+    }).catch(function (e) { a.status = from; paintPipe(); renderNav(); fail(e); });
+  }
+  document.addEventListener('dragstart', function (e) {
+    var c = e.target.closest && e.target.closest('.kan .card'); if (!c) return;
+    dragId = c.getAttribute('data-id'); c.classList.add('dragging');
+    try { e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move'; } catch (x) {}
+  });
+  document.addEventListener('dragend', function () {
+    dragId = null;
+    [].forEach.call(document.querySelectorAll('.kan .dragging, .kan .col.over'), function (n) { n.classList.remove('dragging', 'over'); });
+  });
+  document.addEventListener('dragover', function (e) {
+    var col = dragId && e.target.closest && e.target.closest('.kan .col'); if (!col) return;
+    e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (x) {}
+    [].forEach.call(document.querySelectorAll('.kan .col.over'), function (n) { if (n !== col) n.classList.remove('over'); });
+    col.classList.add('over');
+  });
+  document.addEventListener('drop', function (e) {
+    var col = dragId && e.target.closest && e.target.closest('.kan .col'); if (!col) return;
+    e.preventDefault(); var id = dragId; dragId = null; col.classList.remove('over');
+    moveApp(id, col.getAttribute('data-st'));
+  });
 
   function openApp(id) {
     S.open = { type: 'app', id: id }; setHash('app/' + id);

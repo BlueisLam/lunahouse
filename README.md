@@ -82,6 +82,9 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 - "Hồ sơ nhận" = số application tạo trong kỳ. Các mốc (screening, gửi khách, phỏng vấn, offer, nhận việc, từ chối, rút) = số lần hồ sơ chuyển vào trạng thái đó trong kỳ, lấy từ nhật ký `lh_activities`. Có bảng theo job, tỉ lệ chuyển đổi và số ngày trung bình từ lúc nộp đến nhận việc.
 - Logic thuần ở `server/_lib/report.js` (có test), action `report.get` trong `server/admin-api.js`.
 
+## Kéo thả pipeline
+- Kéo thẻ ứng viên sang cột khác để đổi trạng thái (chuột/máy tính). Kéo thả KHÔNG gửi email; muốn báo ứng viên thì mở thẻ, tick "Báo cho ứng viên qua email khi lưu".
+
 ## Kho tài năng không vào pipeline
 - Người nộp CV mà không chọn job vẫn có hồ sơ + mã tra cứu (để xem trạng thái, rút hồ sơ), nhưng hồ sơ đó KHÔNG hiện trong Pipeline, không tính vào "Application đang chạy" và không nằm trong phễu báo cáo (đếm riêng ở cột "Vào kho").
 - Admin thấy họ ở Ứng viên và ở Tổng quan → "Mới vào kho tài năng" (14 ngày). Khi có job mới: Matching → thêm vào pipeline (tạo hồ sơ cho job đó).

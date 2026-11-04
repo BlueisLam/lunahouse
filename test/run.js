@@ -605,6 +605,21 @@ test('đọc CV Word (.docx): chạy được cả bản mammoth của Node lẫ
   assert.strictEqual(r.ok, true, JSON.stringify(r));
 });
 
+test('kéo thả pipeline: đổi trạng thái không kèm notify thì không gửi email, vẫn ghi nhật ký; có notify mới gửi', async () => {
+  const ap = await H.invoke(H.F('apply'), { body: applyBody({ full_name: 'Kéo Thả', email: 'drag.drop@example.com', phone_number: '0905123987' }), headers: ip(61) });
+  assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
+  const row = H.fake.t.lh_applications.find(a => a.code === ap.json.code);
+  H.calls.length = 0;
+  const r = await admin('apps.update', { id: row.id, status: 'interview1' });        // đúng lời gọi của kéo thả
+  assert.strictEqual(r.emailed, false);
+  assert.ok(!H.calls.some(c => /resend/.test(c.url)), 'không được gửi email khi không tick báo');
+  assert.strictEqual(H.fake.t.lh_applications.find(a => a.id === row.id).status, 'interview1');
+  assert.ok(H.fake.t.lh_activities.some(x => x.application_id === row.id && x.meta && x.meta.to === 'interview1'));
+  await assert.rejects(() => admin('apps.update', { id: row.id, status: 'khong-co' }), /400/);
+  const r2 = await admin('apps.update', { id: row.id, status: 'offer', notify: true });
+  assert.strictEqual(r2.emailed, true);
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {
