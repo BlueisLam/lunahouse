@@ -9,9 +9,11 @@ const DEFAULTS = {
   lh_activities: () => ({ type: 'note', note: '', meta: {} }),
   lh_threads: () => ({ is_public: false, unread_admin: true, last_from: 'candidate' }),
   lh_messages: () => ({ ip_hash: '' }),
+  lh_recruiters: () => ({ auth_id: null, display_name: '', title: '', bio: '', contact_email: '', zalo: '', facebook: '', linkedin: '', telegram: '', communities: [], role: 'recruiter', status: 'pending', telegram_chat_id: '', notify_email: '', ip_hash: '', last_login_at: null }),
 };
 
 function derive(table, row) {
+  if (table === 'lh_recruiters') row.email_norm = String(row.email || '').trim().toLowerCase();
   if (table === 'lh_candidates') {
     row.email_norm = String(row.email || '').trim().toLowerCase();
     row.phone_norm = String(row.phone_number || '').replace(/\D/g, '').slice(-9);
@@ -25,6 +27,11 @@ function uniqueCheck(db, table, row, selfId) {
   if (table === 'lh_applications') {
     if (rows.some(r => r.code === row.code)) return dupe('lh_applications_code_key code');
     if (row.job_id && rows.some(r => r.job_id === row.job_id && r.candidate_id === row.candidate_id)) return dupe('lh_app_job_cand');
+  }
+  if (table === 'lh_recruiters') {
+    if (rows.some(r => r.email_norm === row.email_norm)) return dupe('lh_rec_email email_norm');
+    if (rows.some(r => String(r.handle).toLowerCase() === String(row.handle).toLowerCase())) return dupe('lh_rec_handle handle');
+    if (row.auth_id && rows.some(r => r.auth_id === row.auth_id)) return dupe('lh_recruiters_auth_id_key auth_id');
   }
   if (table === 'lh_jobs' && rows.some(r => r.slug === row.slug)) return dupe('lh_jobs_slug_key slug');
   if (table === 'lh_threads' && rows.some(r => r.token === row.token)) return dupe('lh_threads_token_key token');
@@ -105,7 +112,7 @@ class Query {
 
 class FakeDB {
   constructor() {
-    this.t = { lh_jobs: [], lh_candidates: [], lh_applications: [], lh_activities: [], lh_threads: [], lh_messages: [] };
+    this.t = { lh_recruiters: [], lh_jobs: [], lh_candidates: [], lh_applications: [], lh_activities: [], lh_threads: [], lh_messages: [] };
     this.files = new Map();
     const self = this;
     this.storage = {

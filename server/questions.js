@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { sb, must } = require('./_lib/db');
 const U = require('./_lib/util');
 const N = require('./_lib/notify');
+const T = require('./_lib/tenant');
 
 const MAX_PER_IP_HOUR = 6;
 const MAX_MSG_PER_THREAD = 60;
@@ -39,8 +40,9 @@ async function tooMany(db, event) {
 
 // ---------- GET ----------
 async function listPublic(db, slug) {
-  const job = must(await db.from('lh_jobs').select('id,status').eq('slug', U.clean(slug, 80)).maybeSingle(), 'job');
-  if (!job || job.status !== 'open') return U.json(200, { threads: [] });
+  const job = must(await db.from('lh_jobs').select('id,status,recruiter_id').eq('slug', U.clean(slug, 80)).maybeSingle(), 'job');
+  const owner = job && await T.byId(job.recruiter_id);
+  if (!job || job.status !== 'open' || !owner || owner.status !== 'active') return U.json(200, { threads: [] });
   const threads = must(await db.from('lh_threads').select('id,author_name,created_at').eq('job_id', job.id).eq('is_public', true).order('updated_at', { ascending: false }).limit(PUBLIC_LIMIT), 'threads');
   if (!threads.length) return U.json(200, { threads: [] });
   const msgs = must(await db.from('lh_messages').select('thread_id,sender,body,created_at').in('thread_id', threads.map(t => t.id)).order('created_at', { ascending: true }), 'messages');
@@ -53,12 +55,13 @@ async function listPublic(db, slug) {
 
 async function viewPrivate(db, token) {
   const t = token && /^[a-f0-9]{20,64}$/.test(token)
-    ? must(await db.from('lh_threads').select('id,job_id,token,author_name,is_public,created_at').eq('token', token).maybeSingle(), 'thread') : null;
+    ? must(await db.from('lh_threads').select('id,job_id,recruiter_id,token,author_name,is_public,created_at').eq('token', token).maybeSingle(), 'thread') : null;
   if (!t) { await U.sleep(400); throw new U.HttpError(404, 'Không tìm thấy hội thoại này. Bạn mở lại link trong email nhé.'); }
   const job = must(await db.from('lh_jobs').select('title,slug,status').eq('id', t.job_id).maybeSingle(), 'job');
+  const owner = await T.byId(t.recruiter_id);
   const msgs = must(await db.from('lh_messages').select('sender,body,created_at').eq('thread_id', t.id).order('created_at', { ascending: true }), 'messages');
   return U.json(200, {
-    name: t.author_name, is_public: t.is_public,
+    name: t.author_name, is_public: t.is_public, profile: owner ? T.publicProfile(owner) : null,
     job: job ? { title: job.title, slug: job.slug, open: job.status === 'open' } : null,
     messages: msgs.map(pubMsg),
   }, { 'cache-control': 'no-store' });
@@ -73,15 +76,16 @@ async function ask(db, b, event) {
   const body = readBody(b.body);
   const ipHash = await tooMany(db, event);
 
-  const job = must(await db.from('lh_jobs').select('id,title,slug,status').eq('slug', U.clean(b.job_slug, 80)).maybeSingle(), 'job');
-  if (!job || job.status !== 'open') throw new U.HttpError(404, 'Vị trí này không còn nhận câu hỏi.');
+  const job = must(await db.from('lh_jobs').select('id,title,slug,status,recruiter_id').eq('slug', U.clean(b.job_slug, 80)).maybeSingle(), 'job');
+  const rec = job && await T.byId(job.recruiter_id);
+  if (!job || job.status !== 'open' || !rec || rec.status !== 'active') throw new U.HttpError(404, 'Vị trí này không còn nhận câu hỏi.');
 
   const token = crypto.randomBytes(18).toString('hex');
-  const thread = must(await db.from('lh_threads').insert({ job_id: job.id, token, author_name: name, author_email: emailRaw, is_public: false, unread_admin: true, last_from: 'candidate' }).select().single(), 'thread');
+  const thread = must(await db.from('lh_threads').insert({ job_id: job.id, recruiter_id: job.recruiter_id, token, author_name: name, author_email: emailRaw, is_public: false, unread_admin: true, last_from: 'candidate' }).select().single(), 'thread');
   must(await db.from('lh_messages').insert({ thread_id: thread.id, sender: 'candidate', body, ip_hash: ipHash }), 'message');
 
   const base = N.baseUrl(event);
-  await N.settle([N.notifyThreadMessage({ thread, job, body, first: true, base }), N.emailThreadReceipt({ thread, job, body, base })]);
+  await N.settle([N.notifyThreadMessage({ thread, job, body, first: true, base, rec }), N.emailThreadReceipt({ thread, job, body, base, rec })]);
   return U.json(200, { ok: true, token, link: N.threadLink(base, thread) });
 }
 
@@ -98,7 +102,7 @@ async function say(db, b, event) {
   must(await db.from('lh_messages').insert({ thread_id: thread.id, sender: 'candidate', body, ip_hash: ipHash }), 'message');
   must(await db.from('lh_threads').update({ unread_admin: true, last_from: 'candidate' }).eq('id', thread.id), 'thread update');
   const job = must(await db.from('lh_jobs').select('title').eq('id', thread.job_id).maybeSingle(), 'job');
-  await N.notifyThreadMessage({ thread, job, body, first: false, base: N.baseUrl(event) });
+  await N.notifyThreadMessage({ thread, job, body, first: false, base: N.baseUrl(event), rec: await T.byId(thread.recruiter_id) });
   return U.json(200, { ok: true });
 }
 

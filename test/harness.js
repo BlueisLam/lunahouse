@@ -7,6 +7,9 @@ process.env.TELEGRAM_CHAT_ID = '999';
 process.env.RESEND_API_KEY = 're_fake';
 process.env.ADMIN_NOTIFY_EMAIL = 'admin@example.com';
 process.env.GROQ_API_KEY = "gsk_fake";
+process.env.ADMIN_EMAIL = 'owner@example.com';
+process.env.SUPABASE_URL = 'https://fake.supabase.co';
+process.env.SUPABASE_SERVICE_KEY = 'service-fake';
 process.env.SITE_URL = process.env.SITE_URL || 'http://localhost:8888';
 
 const { FakeDB } = require('./fake-supabase');
@@ -18,6 +21,12 @@ require.cache[dbPath].exports = { ...realDb, sb: () => fake };
 
 const calls = [];
 const state = { cv: null, failParse: false };
+
+// Supabase Auth giả: người dùng email + mật khẩu, mã khôi phục một lần.
+const authUsers = new Map(); // email -> { id, password }
+const recovery = new Map();  // token_hash -> email
+const googleTokens = new Map(); // access_token -> { id, email, name }
+
 
 const DEFAULT_CV = {
   full_name: 'TÊN DO AI ĐỌC', date_of_birth: '1998', address: 'Hồ Chí Minh', phone_number: '0900000000', email: 'ai@example.com',
@@ -47,9 +56,47 @@ function claudeReply(body) {
   return '{}';
 }
 
+function fakeAuth(url, opts, body) {
+  const path = url.split('/auth/v1')[1].split('?')[0];
+  const bearer = String((opts.headers || {}).authorization || '').replace(/^Bearer /, '');
+  const crypto = require('crypto');
+  if (path === '/admin/users') {
+    if (authUsers.has(body.email)) return resp(422, { error_code: 'email_exists', msg: 'A user with this email address has already been registered' });
+    if (String(body.password).length < 6) return resp(422, { error_code: 'weak_password', msg: 'Password should be at least 6 characters' });
+    const id = crypto.randomUUID(); authUsers.set(body.email, { id, password: body.password });
+    return resp(200, { id, email: body.email });
+  }
+  if (path === '/token') {
+    const u = authUsers.get(body.email);
+    return u && u.password === body.password ? resp(200, { access_token: 'tok', user: { id: u.id, email: body.email } }) : resp(400, { error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
+  }
+  if (path === '/admin/generate_link') {
+    if (!authUsers.has(body.email)) return resp(404, { msg: 'User not found' });
+    const th = 'rec' + crypto.randomBytes(8).toString('hex'); recovery.set(th, body.email);
+    return resp(200, { hashed_token: th, action_link: 'x' });
+  }
+  if (path === '/verify') {
+    const em = recovery.get(body.token_hash);
+    if (!em) return resp(403, { msg: 'Email link is invalid or has expired' });
+    recovery.delete(body.token_hash); return resp(200, { access_token: 'rt:' + em });
+  }
+  if (path === '/user' && opts.method === 'PUT') {
+    const em = bearer.startsWith('rt:') ? bearer.slice(3) : null; const u = em && authUsers.get(em);
+    if (!u) return resp(401, { msg: 'bad token' });
+    if (String(body.password).length < 6) return resp(422, { error_code: 'weak_password' });
+    u.password = body.password; return resp(200, { id: u.id });
+  }
+  if (path === '/user') {
+    const g = googleTokens.get(bearer);
+    return g ? resp(200, { id: g.id, email: g.email, user_metadata: { full_name: g.name } }) : resp(401, { msg: 'bad jwt' });
+  }
+  return resp(404, { msg: 'fake auth: ' + path });
+}
+
 global.fetch = async (url, opts = {}) => {
   url = String(url);
   const body = opts.body ? JSON.parse(opts.body) : null;
+  if (url.includes('fake.supabase.co/auth/v1')) return fakeAuth(url, opts, body);
   if (/telegram|resend|groq|generativelanguage/.test(url)) calls.push({ url, body, headers: opts.headers });
   if (url.includes('api.telegram.org')) return resp(200, { ok: true });
   if (url.includes('api.resend.com')) return resp(200, { id: 'email_1' });
@@ -81,4 +128,4 @@ async function invoke(mod, { method = 'POST', body, form, headers = {}, query } 
 const F = n => require('../server/' + n);
 const fakePdf = (extra = '') => Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\n' + extra + '\n%%EOF').toString('base64');
 
-module.exports = { CV_TEXT, fake, calls, state, invoke, F, fakePdf, DEFAULT_CV };
+module.exports = { authUsers, recovery, googleTokens, CV_TEXT, fake, calls, state, invoke, F, fakePdf, DEFAULT_CV };

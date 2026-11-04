@@ -1,7 +1,7 @@
 'use strict';
 const { sb, must, BUCKET } = require('./_lib/db');
 const U = require('./_lib/util');
-const { requireAdmin } = require('./_lib/auth');
+const T = require('./_lib/tenant');
 const { STAGES, isStatus, TERMINAL } = require('./_lib/status');
 const { stage1 } = require('./_lib/match');
 const { parseCandidate } = require('./_lib/parse');
@@ -54,28 +54,36 @@ function jobPatch(b) {
   return o;
 }
 
-async function allCandidates(cols) {
+/** Lấy đúng một dòng của recruiter này; của người khác thì coi như không tồn tại. */
+async function own(table, id, rid, cols) {
+  const r = id ? must(await sb().from(table).select(cols || '*').eq('id', id).eq('recruiter_id', rid).maybeSingle(), table) : null;
+  if (!r) throw new U.HttpError(404, 'Không tìm thấy dữ liệu này.');
+  return r;
+}
+const needAdmin = b => { if (b._rec.role !== 'admin') throw new U.HttpError(403, 'Chỉ quản trị viên mới dùng được chức năng này.'); };
+
+async function allCandidates(cols, rid) {
   const db = sb(), out = [];
   for (let page = 0; page < 8; page++) {
-    const rows = must(await db.from('lh_candidates').select(cols || LIST_COLS).order('created_at', { ascending: false }).range(page * 1000, page * 1000 + 999), 'candidates');
+    const rows = must(await db.from('lh_candidates').select(cols || LIST_COLS).eq('recruiter_id', rid).order('created_at', { ascending: false }).range(page * 1000, page * 1000 + 999), 'candidates');
     out.push(...rows);
     if (rows.length < 1000) break;
   }
   return out;
 }
 
-async function logActivity(application_id, type, note, meta) {
-  must(await sb().from('lh_activities').insert({ application_id, type, note: note || '', meta: meta || {} }), 'activity');
+async function logActivity(application_id, type, note, meta, rid) {
+  must(await sb().from('lh_activities').insert({ application_id, type, note: note || '', meta: meta || {}, recruiter_id: rid }), 'activity');
 }
 
-async function createApp({ job_id, candidate_id, match_score, match_reason }) {
+async function createApp({ job_id, candidate_id, match_score, match_reason, rid }) {
   const db = sb();
   const dupQ = db.from('lh_applications').select('id').eq('candidate_id', candidate_id).eq('job_id', job_id);
   if (must(await dupQ.limit(1), 'dup')[0]) return null;
   let app = null;
   for (let i = 0; i < 6 && !app; i++) {
     const r = await db.from('lh_applications').insert({
-      code: U.genCode(), job_id, candidate_id, status: 'new',
+      code: U.genCode(), job_id, candidate_id, status: 'new', recruiter_id: rid,
       match_score: match_score == null ? null : Math.round(match_score), match_reason: U.clean(match_reason, 400),
       next_action: 'Gọi điện xác nhận nhu cầu',
     }).select().single();
@@ -83,29 +91,32 @@ async function createApp({ job_id, candidate_id, match_score, match_reason }) {
     else if (!(r.error.code === '23505' && /code/.test((r.error.message || '') + (r.error.details || '')))) must(r, 'insert app');
   }
   if (!app) throw new Error('Không tạo được mã hồ sơ.');
-  await logActivity(app.id, 'status', 'Thêm vào pipeline từ matching', { from: '', to: 'new' });
+  await logActivity(app.id, 'status', 'Thêm vào pipeline từ matching', { from: '', to: 'new' }, rid);
   return app;
 }
 
 // ---------- actions ----------
 const A = {};
 
-A.bootstrap = async () => {
-  const jobs = must(await sb().from('lh_jobs').select('*').order('created_at', { ascending: false }), 'jobs');
+A.bootstrap = async (b) => {
+  const jobs = must(await sb().from('lh_jobs').select('*').eq('recruiter_id', b._rid).order('created_at', { ascending: false }), 'jobs');
   let unread = 0;
   try {
-    const r = await sb().from('lh_threads').select('id', { count: 'exact', head: true }).eq('unread_admin', true);
+    const r = await sb().from('lh_threads').select('id', { count: 'exact', head: true }).eq('unread_admin', true).eq('recruiter_id', b._rid);
     unread = r.error ? 0 : (r.count || 0);
   } catch (e) { unread = 0; }
-  return { jobs, stages: STAGES, terminal: TERMINAL, unread_threads: unread };
+  const viewing = b._rid === b._rec.id ? null : await T.byId(b._rid);
+  return {
+    jobs, stages: STAGES, terminal: TERMINAL, unread_threads: unread, me: T.selfView(b._rec),
+    viewing: viewing ? { id: viewing.id, display_name: viewing.display_name, email: viewing.email, handle: viewing.handle } : null,
+  };
 };
 
-A['candidates.list'] = async () => ({ candidates: await allCandidates() });
+A['candidates.list'] = async (b) => ({ candidates: await allCandidates(null, b._rid) });
 
 A['candidates.get'] = async (b) => {
   const db = sb();
-  const cand = must(await db.from('lh_candidates').select('*').eq('id', b.id).maybeSingle(), 'cand');
-  if (!cand) throw new U.HttpError(404, 'Không tìm thấy hồ sơ.');
+  const cand = await own('lh_candidates', b.id, b._rid);
   const apps = must(await db.from('lh_applications').select('*').eq('candidate_id', cand.id).order('created_at', { ascending: false }), 'apps');
   const jobIds = [...new Set(apps.map(a => a.job_id).filter(Boolean))];
   const jobs = jobIds.length ? must(await db.from('lh_jobs').select('id,title').in('id', jobIds), 'jobs') : [];
@@ -122,14 +133,15 @@ A['candidates.save'] = async (b) => {
   const patch = candPatch(b);
   if (!b.id) {
     if (!patch.full_name) throw new U.HttpError(400, 'Cần có họ tên.');
-    return { candidate: must(await sb().from('lh_candidates').insert({ ...patch, source: 'admin' }).select().single(), 'insert') };
+    return { candidate: must(await sb().from('lh_candidates').insert({ ...patch, source: 'admin', recruiter_id: b._rid }).select().single(), 'insert') };
   }
-  return { candidate: must(await sb().from('lh_candidates').update(patch).eq('id', b.id).select().single(), 'update') };
+  await own('lh_candidates', b.id, b._rid, 'id');
+  return { candidate: must(await sb().from('lh_candidates').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(), 'update') };
 };
 
 A['candidates.delete'] = async (b) => {
   const db = sb();
-  const cand = must(await db.from('lh_candidates').select('id,cv_path').eq('id', b.id).maybeSingle(), 'cand');
+  const cand = must(await db.from('lh_candidates').select('id,cv_path').eq('id', b.id).eq('recruiter_id', b._rid).maybeSingle(), 'cand');
   if (!cand) return { ok: true };
   if (cand.cv_path) await db.storage.from(BUCKET).remove([cand.cv_path]);
   must(await db.from('lh_candidates').delete().eq('id', b.id), 'delete');
@@ -144,7 +156,7 @@ A['candidates.upload'] = async (b) => {
   if (!kind) throw new U.HttpError(400, 'Chỉ nhận PDF, DOCX, JPG, PNG.');
   const name = U.clean(b.file.name, 120) || 'cv.' + kind;
   const db = sb();
-  const cand = must(await db.from('lh_candidates').insert({ full_name: '(đang phân tích) ' + name, source: 'admin', parse_status: 'pending' }).select().single(), 'stub');
+  const cand = must(await db.from('lh_candidates').insert({ full_name: '(đang phân tích) ' + name, source: 'admin', parse_status: 'pending', recruiter_id: b._rid }).select().single(), 'stub');
   const path = `${cand.id}/${Date.now()}-${U.slugify(name.replace(/\.[^.]+$/, ''))}.${kind}`;
   const up = await db.storage.from(BUCKET).upload(path, buffer, { contentType: U.MIME[kind], upsert: false });
   if (up.error) { await db.from('lh_candidates').delete().eq('id', cand.id); throw new Error('upload: ' + up.error.message); }
@@ -153,8 +165,8 @@ A['candidates.upload'] = async (b) => {
 };
 
 A['candidates.reparse'] = async (b) => {
-  const c = must(await sb().from('lh_candidates').select('id,cv_path').eq('id', b.id).maybeSingle(), 'cand');
-  if (!c || !c.cv_path) throw new U.HttpError(400, 'Hồ sơ này chưa có file CV để đọc.');
+  const c = await own('lh_candidates', b.id, b._rid, 'id,cv_path');
+  if (!c.cv_path) throw new U.HttpError(400, 'Hồ sơ này chưa có file CV để đọc.');
   must(await sb().from('lh_candidates').update({ parse_status: 'pending', parse_error: '' }).eq('id', b.id), 'pending');
   return { ok: true };
 };
@@ -162,15 +174,15 @@ A['candidates.reparse'] = async (b) => {
 /** Đọc CV bằng AI cho một hồ sơ (admin gọi lần lượt từng hồ sơ đang chờ). */
 A['candidates.parse'] = async (b) => {
   if (!b.id) throw new U.HttpError(400, 'Thiếu id.');
+  await own('lh_candidates', b.id, b._rid, 'id');
   return await parseCandidate(b.id, { text: U.clean(b.text, 40000), images: b.images });
 };
 
 A['candidates.merge'] = async (b) => {
   const db = sb();
   if (!b.from || !b.to || b.from === b.to) throw new U.HttpError(400, 'Cần chọn hai hồ sơ khác nhau.');
-  const from = must(await db.from('lh_candidates').select('*').eq('id', b.from).maybeSingle(), 'from');
-  const to = must(await db.from('lh_candidates').select('*').eq('id', b.to).maybeSingle(), 'to');
-  if (!from || !to) throw new U.HttpError(404, 'Không tìm thấy hồ sơ.');
+  const from = await own('lh_candidates', b.from, b._rid);
+  const to = await own('lh_candidates', b.to, b._rid);
 
   const union = (x, y) => U.toArr([...(x || []), ...(y || [])]);
   const fill = k => (to[k] ? to[k] : from[k] || '');
@@ -205,20 +217,22 @@ A['jobs.save'] = async (b) => {
     if (!patch.title) throw new U.HttpError(400, 'Cần có tên vị trí.');
     let slug = U.slugify(patch.title);
     for (let i = 0; i < 5; i++) {
-      const hit = must(await db.from('lh_jobs').select('id').eq('slug', slug).limit(1), 'slug')[0];
+      const hit = must(await db.from('lh_jobs').select('id').eq('slug', slug).limit(1), 'slug')[0]; // slug là duy nhất toàn site
       if (!hit) break;
       slug = U.slugify(patch.title).slice(0, 52) + '-' + U.genCode().slice(3, 7).toLowerCase();
     }
-    return { job: must(await db.from('lh_jobs').insert({ ...patch, slug }).select().single(), 'insert job') };
+    return { job: must(await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(), 'insert job') };
   }
-  return { job: must(await db.from('lh_jobs').update(patch).eq('id', b.id).select().single(), 'update job') };
+  await own('lh_jobs', b.id, b._rid, 'id');
+  return { job: must(await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(), 'update job') };
 };
 
 A['jobs.delete'] = async (b) => {
   const db = sb();
+  await own('lh_jobs', b.id, b._rid, 'id');
   const n = await db.from('lh_applications').select('id', { count: 'exact', head: true }).eq('job_id', b.id);
   if ((n.count || 0) > 0) throw new U.HttpError(400, `Job này đã có ${n.count} application. Hãy chuyển sang "Đã đóng" thay vì xoá.`);
-  must(await db.from('lh_jobs').delete().eq('id', b.id), 'delete job');
+  must(await db.from('lh_jobs').delete().eq('id', b.id).eq('recruiter_id', b._rid), 'delete job');
   return { ok: true };
 };
 
@@ -231,9 +245,9 @@ A['jobs.fromText'] = async (b) => {
   return { job: p };
 };
 
-A['apps.list'] = async () => {
+A['apps.list'] = async (b) => {
   const db = sb();
-  const apps = must(await db.from('lh_applications').select('id,code,job_id,candidate_id,status,match_score,next_action,next_action_date,updated_at,created_at').order('updated_at', { ascending: false }).range(0, 999), 'apps');
+  const apps = must(await db.from('lh_applications').select('id,code,job_id,candidate_id,status,match_score,next_action,next_action_date,updated_at,created_at').eq('recruiter_id', b._rid).order('updated_at', { ascending: false }).range(0, 999), 'apps');
   const cands = {}, titles = {};
   const cids = [...new Set(apps.map(a => a.candidate_id))];
   for (let i = 0; i < cids.length; i += 200) {
@@ -262,20 +276,19 @@ A['report.get'] = async (b) => {
   const all = async (mk) => { const out = []; for (let p = 0; p < 30; p++) { const r = must(await mk().range(p * 1000, p * 1000 + 999), 'report'); out.push(...r); if (r.length < 1000) break; } return out; };
   const { startISO, endISO } = R.bounds(from, to);
   // Hồ sơ tạo trong kỳ + hồ sơ có đổi trạng thái trong kỳ (có thể tạo từ trước kỳ).
-  const acts = await all(() => db.from('lh_activities').select('application_id,type,meta,created_at').eq('type', 'status').gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
-  const created = await all(() => db.from('lh_applications').select('id,job_id,created_at,status').gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
+  const acts = await all(() => db.from('lh_activities').select('application_id,type,meta,created_at').eq('type', 'status').eq('recruiter_id', b._rid).gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
+  const created = await all(() => db.from('lh_applications').select('id,job_id,created_at,status').eq('recruiter_id', b._rid).gte('created_at', startISO).lte('created_at', endISO).order('created_at', { ascending: true }));
   const have = new Set(created.map(a => a.id));
   const need = [...new Set(acts.map(x => x.application_id))].filter(id => !have.has(id));
   const older = [];
-  for (let i = 0; i < need.length; i += 150) older.push(...must(await db.from('lh_applications').select('id,job_id,created_at,status').in('id', need.slice(i, i + 150)), 'report apps'));
-  const jobs = Object.fromEntries(must(await db.from('lh_jobs').select('id,title'), 'jobs').map(j => [j.id, j.title]));
+  for (let i = 0; i < need.length; i += 150) older.push(...must(await db.from('lh_applications').select('id,job_id,created_at,status').eq('recruiter_id', b._rid).in('id', need.slice(i, i + 150)), 'report apps'));
+  const jobs = Object.fromEntries(must(await db.from('lh_jobs').select('id,title').eq('recruiter_id', b._rid), 'jobs').map(j => [j.id, j.title]));
   return R.buildReport({ apps: created.concat(older), acts, jobs, from, to, group });
 };
 
 A['apps.get'] = async (b) => {
   const db = sb();
-  const app = must(await db.from('lh_applications').select('*').eq('id', b.id).maybeSingle(), 'app');
-  if (!app) throw new U.HttpError(404, 'Không tìm thấy application.');
+  const app = await own('lh_applications', b.id, b._rid);
   const acts = must(await db.from('lh_activities').select('*').eq('application_id', app.id).order('created_at', { ascending: false }), 'acts');
   const cand = must(await db.from('lh_candidates').select('id,full_name,phone_number,email,technologies,total_years_experience,headline,cv_path,cv_filename').eq('id', app.candidate_id).maybeSingle(), 'cand');
   const job = app.job_id ? must(await db.from('lh_jobs').select('id,title,slug').eq('id', app.job_id).maybeSingle(), 'job') : null;
@@ -287,14 +300,14 @@ A['apps.get'] = async (b) => {
 
 A['apps.create'] = async (b) => {
   if (!b.job_id || !b.candidate_id) throw new U.HttpError(400, 'Thiếu job hoặc ứng viên.');
-  const app = await createApp(b);
+  await own('lh_jobs', b.job_id, b._rid, 'id'); await own('lh_candidates', b.candidate_id, b._rid, 'id');
+  const app = await createApp({ ...b, rid: b._rid });
   return { created: !!app, application: app };
 };
 
 A['apps.update'] = async (b) => {
   const db = sb();
-  const cur = must(await db.from('lh_applications').select('*').eq('id', b.id).maybeSingle(), 'app');
-  if (!cur) throw new U.HttpError(404, 'Không tìm thấy application.');
+  const cur = await own('lh_applications', b.id, b._rid);
   const patch = {};
   if (b.public_note !== undefined) patch.public_note = U.clean(b.public_note, 1000);
   if (b.internal_note !== undefined) patch.internal_note = U.clean(b.internal_note, 3000);
@@ -306,16 +319,16 @@ A['apps.update'] = async (b) => {
     patch.status = b.status; changed = true;
   }
   const app = Object.keys(patch).length ? must(await db.from('lh_applications').update(patch).eq('id', cur.id).select().single(), 'update') : cur;
-  if (changed) await logActivity(cur.id, 'status', '', { from: cur.status, to: b.status });
+  if (changed) await logActivity(cur.id, 'status', '', { from: cur.status, to: b.status }, b._rid);
 
   let emailed = false;
   if (b.notify && (changed || patch.public_note !== undefined)) {
     const cand = must(await db.from('lh_candidates').select('id,full_name,email').eq('id', cur.candidate_id).maybeSingle(), 'cand');
     const job = cur.job_id ? must(await db.from('lh_jobs').select('title').eq('id', cur.job_id).maybeSingle(), 'job') : null;
     if (cand && cand.email) {
-      const r = await N.settle([N.emailStatus({ app, cand, job })]);
+      const r = await N.settle([N.emailStatus({ app, cand, job, rec: await T.byId(b._rid) })]);
       emailed = r[0].status === 'fulfilled' && !(r[0].value && r[0].value.skipped);
-      if (emailed) await logActivity(cur.id, 'system', 'Đã gửi email cập nhật cho ứng viên', {});
+      if (emailed) await logActivity(cur.id, 'system', 'Đã gửi email cập nhật cho ứng viên', {}, b._rid);
     }
   }
   return { application: app, emailed };
@@ -324,15 +337,15 @@ A['apps.update'] = async (b) => {
 A['activities.add'] = async (b) => {
   const note = U.clean(b.note, 1000);
   if (!note) throw new U.HttpError(400, 'Ghi chú đang trống.');
-  await logActivity(b.application_id, 'note', note, {});
+  await own('lh_applications', b.application_id, b._rid, 'id');
+  await logActivity(b.application_id, 'note', note, {}, b._rid);
   return { ok: true };
 };
 
 A['match.stage1'] = async (b) => {
   const db = sb();
-  const job = must(await db.from('lh_jobs').select('*').eq('id', b.job_id).maybeSingle(), 'job');
-  if (!job) throw new U.HttpError(404, 'Không tìm thấy job.');
-  const cands = await allCandidates();
+  const job = await own('lh_jobs', b.job_id, b._rid);
+  const cands = await allCandidates(null, b._rid);
   const pool = stage1(job, cands);
   const existing = must(await db.from('lh_applications').select('candidate_id').eq('job_id', job.id), 'existing');
   const has = new Set(existing.map(a => a.candidate_id));
@@ -349,9 +362,8 @@ A['match.score'] = async (b) => {
   const db = sb();
   const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, SCORE_BATCH_MAX);
   if (!ids.length) return { results: [] };
-  const job = must(await db.from('lh_jobs').select('*').eq('id', b.job_id).maybeSingle(), 'job');
-  if (!job) throw new U.HttpError(404, 'Không tìm thấy job.');
-  const cands = must(await db.from('lh_candidates').select('*').in('id', ids), 'cands');
+  const job = await own('lh_jobs', b.job_id, b._rid);
+  const cands = must(await db.from('lh_candidates').select('*').eq('recruiter_id', b._rid).in('id', ids), 'cands');
   return { results: await AI.scoreBatch(job, cands) };
 };
 
@@ -359,11 +371,11 @@ A['match.score'] = async (b) => {
 // ---------- hỏi đáp dưới job ----------
 const THREAD_MSG_MAX = 1500;
 
-A['threads.list'] = async () => {
+A['threads.list'] = async (b) => {
   const db = sb();
-  const threads = must(await db.from('lh_threads').select('id,job_id,author_name,author_email,is_public,unread_admin,last_from,created_at,updated_at').order('updated_at', { ascending: false }).limit(150), 'threads');
+  const threads = must(await db.from('lh_threads').select('id,job_id,author_name,author_email,is_public,unread_admin,last_from,created_at,updated_at').eq('recruiter_id', b._rid).order('updated_at', { ascending: false }).limit(150), 'threads');
   if (!threads.length) return { threads: [] };
-  const jobs = must(await db.from('lh_jobs').select('id,title,slug'), 'jobs');
+  const jobs = must(await db.from('lh_jobs').select('id,title,slug').eq('recruiter_id', b._rid), 'jobs');
   const jmap = {}; jobs.forEach(j => { jmap[j.id] = j; });
   const msgs = must(await db.from('lh_messages').select('thread_id,sender,body,created_at').in('thread_id', threads.map(t => t.id)).order('created_at', { ascending: false }).limit(1000), 'messages');
   const last = {}, cnt = {};
@@ -375,8 +387,7 @@ A['threads.list'] = async () => {
 
 A['threads.get'] = async (b) => {
   const db = sb();
-  const t = must(await db.from('lh_threads').select('*').eq('id', b.id).maybeSingle(), 'thread');
-  if (!t) throw new U.HttpError(404, 'Không tìm thấy hội thoại.');
+  const t = await own('lh_threads', b.id, b._rid);
   const job = must(await db.from('lh_jobs').select('id,title,slug').eq('id', t.job_id).maybeSingle(), 'job');
   const messages = must(await db.from('lh_messages').select('id,sender,body,created_at').eq('thread_id', t.id).order('created_at', { ascending: true }), 'messages');
   if (t.unread_admin) { must(await db.from('lh_threads').update({ unread_admin: false }).eq('id', t.id), 'read'); t.unread_admin = false; }
@@ -386,8 +397,7 @@ A['threads.get'] = async (b) => {
 
 A['threads.reply'] = async (b) => {
   const db = sb();
-  const t = must(await db.from('lh_threads').select('*').eq('id', b.id).maybeSingle(), 'thread');
-  if (!t) throw new U.HttpError(404, 'Không tìm thấy hội thoại.');
+  const t = await own('lh_threads', b.id, b._rid);
   const body = U.clean(b.body, THREAD_MSG_MAX).replace(/\r/g, '');
   if (body.length < 2) throw new U.HttpError(400, 'Bạn chưa nhập nội dung trả lời.');
   must(await db.from('lh_messages').insert({ thread_id: t.id, sender: 'recruiter', body }), 'reply');
@@ -395,27 +405,72 @@ A['threads.reply'] = async (b) => {
   if (b.publish === true) patch.is_public = true;
   must(await db.from('lh_threads').update(patch).eq('id', t.id), 'thread update');
   const job = must(await db.from('lh_jobs').select('title').eq('id', t.job_id).maybeSingle(), 'job');
-  await N.settle([N.emailThreadReply({ thread: t, job, body, base: b._base })]);
+  await N.settle([N.emailThreadReply({ thread: t, job, body, base: b._base, rec: await T.byId(b._rid) })]);
   return { ok: true, is_public: b.publish === true ? true : t.is_public };
 };
 
 A['threads.publish'] = async (b) => {
   const db = sb();
-  must(await db.from('lh_threads').update({ is_public: !!b.is_public }).eq('id', b.id), 'publish');
+  must(await db.from('lh_threads').update({ is_public: !!b.is_public }).eq('id', b.id).eq('recruiter_id', b._rid), 'publish');
   return { ok: true, is_public: !!b.is_public };
 };
 
 A['threads.delete'] = async (b) => {
-  must(await sb().from('lh_threads').delete().eq('id', b.id), 'delete thread');
+  must(await sb().from('lh_threads').delete().eq('id', b.id).eq('recruiter_id', b._rid), 'delete thread');
   return { ok: true };
+};
+
+// ---------- tài khoản & quản trị ----------
+A['profile.save'] = async (b) => {
+  const rec = b._rec; // chỉ sửa hồ sơ của chính mình
+  const patch = T.profilePatch(b);
+  const row = Object.keys(patch).length ? must(await sb().from('lh_recruiters').update(patch).eq('id', rec.id).select().single(), 'profile') : rec;
+  return { me: T.selfView(row) };
+};
+
+A['recruiters.list'] = async (b) => {
+  needAdmin(b);
+  const db = sb();
+  const rows = must(await db.from('lh_recruiters').select('id,email,handle,display_name,role,status,created_at,last_login_at').order('created_at', { ascending: false }).limit(300), 'recruiters');
+  const count = async (t, id) => (await db.from(t).select('id', { count: 'exact', head: true }).eq('recruiter_id', id)).count || 0;
+  const out = await Promise.all(rows.map(async r => ({ ...r, jobs: await count('lh_jobs', r.id), candidates: await count('lh_candidates', r.id), apps: await count('lh_applications', r.id) })));
+  return { recruiters: out };
+};
+
+A['recruiters.update'] = async (b) => {
+  needAdmin(b);
+  const t = await T.byId(b.id);
+  if (!t) throw new U.HttpError(404, 'Không tìm thấy recruiter.');
+  if (t.id === b._rec.id || t.email_norm === T.ownerEmail()) throw new U.HttpError(400, 'Không thể khoá hoặc đổi quyền tài khoản chủ.');
+  const patch = {};
+  if (b.status !== undefined) {
+    if (!['pending', 'active', 'suspended'].includes(b.status)) throw new U.HttpError(400, 'Trạng thái không hợp lệ.');
+    patch.status = b.status;
+  }
+  if (b.role !== undefined) {
+    if (!['admin', 'recruiter'].includes(b.role)) throw new U.HttpError(400, 'Quyền không hợp lệ.');
+    patch.role = b.role;
+  }
+  if (b.handle !== undefined) {
+    const h = T.cleanHandle(b.handle); T.checkHandle(h);
+    const hit = await T.byHandle(h);
+    if (hit && hit.id !== t.id) throw new U.HttpError(409, 'Đường dẫn này đã có người dùng.');
+    patch.handle = h;
+  }
+  if (!Object.keys(patch).length) return { recruiter: t };
+  const row = must(await sb().from('lh_recruiters').update(patch).eq('id', t.id).select().single(), 'update recruiter');
+  if (patch.status === 'active' && t.status !== 'active') await N.settle([N.emailRecruiterApproved(row, b._base)]);
+  return { recruiter: { id: row.id, status: row.status, role: row.role, handle: row.handle } };
 };
 
 // ---------- handler ----------
 exports.handler = U.wrap(async (event) => {
   if (event.httpMethod !== 'POST') throw new U.HttpError(405, 'Method not allowed');
-  requireAdmin(event);
+  const rec = await T.requireUser(event);
   const b = await U.readInput(event, { fileField: 'file', maxChars: 6_500_000 });
   b._base = N.baseUrl(event);
+  b._rec = rec;
+  b._rid = await T.dataOwner(rec, b.as);
   const fn = Object.prototype.hasOwnProperty.call(A, b.action) ? A[b.action] : null;
   if (!fn) throw new U.HttpError(400, 'Hành động không hợp lệ.');
   return U.json(200, await fn(b));

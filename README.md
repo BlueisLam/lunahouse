@@ -11,7 +11,7 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
    - Framework preset: None · Build command: `npm install --omit=dev` (bắt buộc, để cài thư viện cho Functions) · Build output directory: `public`
 3. **Biến môi trường** (Settings → Variables and Secrets, nên đặt loại *Secret*), xem `.env.example`:
    - `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`
-   - `ADMIN_PASSWORD` (≥ 16 ký tự), `SESSION_SECRET` (`openssl rand -hex 32`)
+   - `ADMIN_EMAIL` (email tài khoản chủ), `ADMIN_PASSWORD` (≥ 16 ký tự, mật khẩu của tài khoản chủ), `SESSION_SECRET` (`openssl rand -hex 32`)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL`, `MAIL_REPLY_TO`
    - AI có dự phòng: `GEMINI_API_KEY` (+ `GEMINI_MODEL`, tuỳ chọn; mặc định tự thử `gemini-3.8-flash` rồi `gemini-flash-latest`, model nào Google khai tử thì tự bỏ qua) và/hoặc `GROQ_API_KEY`. Thứ tự thử đặt bằng `AI_PROVIDERS` (mặc định `gemini,groq`): nhà nào hết hạn mức hoặc lỗi thì tự chuyển sang nhà kế tiếp. Chỉ có một key thì chỉ dùng nhà đó.
@@ -89,3 +89,20 @@ cp .dev.vars.example .dev.vars && npm run dev   # chạy bằng workerd thật, 
 - Người nộp CV mà không chọn job vẫn có hồ sơ + mã tra cứu (để xem trạng thái, rút hồ sơ), nhưng hồ sơ đó KHÔNG hiện trong Pipeline, không tính vào "Application đang chạy" và không nằm trong phễu báo cáo (đếm riêng ở cột "Vào kho").
 - Admin thấy họ ở Ứng viên và ở Tổng quan → "Mới vào kho tài năng" (14 ngày). Khi có job mới: Matching → thêm vào pipeline (tạo hồ sơ cho job đó).
 - Trang tra cứu của họ hiện "Đã lưu vào kho tài năng", không có dòng thời gian các bước.
+
+## Nhiều recruiter (đăng ký, đăng nhập, trang riêng)
+Ai cũng tự đăng ký tại `/admin/` → "Tạo tài khoản recruiter". Tài khoản mới ở trạng thái **chờ duyệt**, admin tổng (tài khoản chủ) duyệt trong tab **Recruiter**.
+
+- **Dữ liệu tách riêng**: job, ứng viên, pipeline, báo cáo, hỏi đáp, CV đều gắn `recruiter_id`. Mỗi API admin chỉ đọc/ghi dòng của chính người đang đăng nhập; dòng của người khác trả 404. `recruiter_id` luôn lấy từ phiên đăng nhập, không bao giờ lấy từ dữ liệu client gửi.
+- **Trang riêng**: `lunahouse.click/<handle>`. Trang chủ `/` là trang của tài khoản chủ. Handle 3–30 ký tự `a-z0-9-`, có danh sách tên bị giữ (apply, track, admin, api...). Tên, chức danh, giới thiệu, liên hệ, cộng đồng sửa ở **Cài đặt** (không còn nằm trong `config.js`).
+- **Tài khoản chủ**: đăng nhập bằng `ADMIN_EMAIL` + `ADMIN_PASSWORD` như cũ. Lần đầu mở trang chủ hoặc đăng nhập sau khi deploy, hệ thống tự tạo tài khoản chủ và **gán toàn bộ dữ liệu cũ** (chưa có chủ) cho tài khoản này. Handle mặc định `lam` (đổi bằng biến `ADMIN_HANDLE` trước lần chạy đầu).
+- **Admin tổng**: duyệt / khoá / mở khoá, cấp quyền admin, và **Xem dữ liệu** của từng recruiter (thanh vàng báo đang xem hộ). Khoá tài khoản là phiên cũ mất hiệu lực ngay, job biến khỏi trang công khai và sitemap, ứng viên không nộp thêm được.
+- **Đăng nhập**: email + mật khẩu do Supabase Auth lưu (đã băm), quên mật khẩu gửi link qua Resend. Đăng ký giới hạn 3 lần/giờ/IP, có ô bẫy bot.
+- **Thông báo theo người**: hồ sơ mới, câu hỏi gửi về email (và Telegram nếu điền chat id) của đúng recruiter. Email gửi ứng viên mang tên recruiter và trả lời về email liên hệ của họ.
+- **Đăng nhập Google (tuỳ chọn)**: bật Google provider trong Supabase (Authentication → Providers), thêm `https://lunahouse.click/admin/` vào Redirect URLs, rồi đặt `GOOGLE_LOGIN=1` ở Cloudflare. Chưa đặt thì nút Google không hiện.
+
+### Nâng cấp từ bản một recruiter
+1. **Backup** Supabase (Database → Backups, hoặc xuất CSV từng bảng).
+2. Chạy `supabase/migrations/2026-11-nhieu-recruiter.sql` trong SQL Editor (môi trường dev: thay `lh_` bằng `lhdev_`). Chỉ thêm bảng/cột.
+3. Cloudflare: đặt `ADMIN_EMAIL` (và kiểm tra `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`), Retry deployment.
+4. Mở trang chủ một lần hoặc đăng nhập bằng `ADMIN_EMAIL` + `ADMIN_PASSWORD` để dữ liệu cũ được gán cho tài khoản chủ.

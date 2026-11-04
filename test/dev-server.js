@@ -9,7 +9,7 @@ const seed = require('./seed');
 const PORT = Number(process.env.PORT) || 8888;
 const PUB = path.join(__dirname, '..', 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml', '.txt': 'text/plain', '.png': 'image/png' };
-const API = { '/api/jobs': 'jobs-public', '/api/apply': 'apply', '/api/track': 'track', '/api/admin': 'admin-api', '/api/admin-login': 'admin-login', '/api/questions': 'questions' };
+const API = { '/api/jobs': 'jobs-public', '/api/apply': 'apply', '/api/track': 'track', '/api/admin': 'admin-api', '/api/auth': 'auth', '/api/questions': 'questions' };
 const PAGES = [[/^\/jobs\/.+/, '/job.html'], [/^\/apply\/?$/, '/apply.html'], [/^\/track\/?$/, '/track.html'], [/^\/q\/?$/, '/q.html']];
 
 /** Đọc public/_headers để bản chạy thử có đúng CSP/headers như Cloudflare Pages. */
@@ -53,6 +53,12 @@ const server = http.createServer(async (req, res) => {
     return res.end(out || fs.readFileSync(path.join(PUB, 'job.html')));
   }
   let p = url.pathname;
+  const seg = /^\/([a-z0-9-]{3,30})\/?$/.exec(p);
+  if (seg && !require('../server/_lib/tenant').RESERVED.has(seg[1]) && !fs.existsSync(path.join(PUB, p))) {
+    const rec = await require('../server/_lib/tenant').publicByHandle(seg[1]);
+    if (!rec) { res.writeHead(404, { 'content-type': TYPES['.html'] }); return res.end(fs.readFileSync(path.join(PUB, '404.html'))); }
+    p = '/index.html';
+  }
   for (const [re, to] of PAGES) if (re.test(p)) p = to;
   let file = path.join(PUB, p);
   if (!file.startsWith(PUB)) { res.writeHead(403); return res.end(); }

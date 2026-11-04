@@ -3,6 +3,7 @@ const { sb, must } = require('./_lib/db');
 const U = require('./_lib/util');
 const { BY_KEY, FLOW, TERMINAL } = require('./_lib/status');
 const N = require('./_lib/notify');
+const T = require('./_lib/tenant');
 
 const NOT_FOUND = 'Không tìm thấy hồ sơ khớp với mã và thông tin liên hệ này. Bạn kiểm tra lại mã trong email xác nhận nhé.';
 
@@ -29,6 +30,7 @@ exports.handler = U.wrap(async (event) => {
     throw new U.HttpError(404, NOT_FOUND);
   }
 
+  const rec = await T.byId(app.recruiter_id);
   const job = app.job_id ? must(await db.from('lh_jobs').select('title,slug').eq('id', app.job_id).maybeSingle(), 'job') : null;
 
   // Ứng viên chủ động rút hồ sơ
@@ -36,8 +38,8 @@ exports.handler = U.wrap(async (event) => {
     if (TERMINAL.includes(app.status)) throw new U.HttpError(400, 'Hồ sơ này đã kết thúc, không thể rút thêm.');
     const prev = app.status;
     must(await db.from('lh_applications').update({ status: 'withdrawn' }).eq('id', app.id), 'withdraw');
-    must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên rút hồ sơ', meta: { from: prev, to: 'withdrawn' } }), 'act');
-    await N.settle([N.telegram(`↩️ <b>${U.esc(cand.full_name)}</b> vừa rút hồ sơ <b>${U.esc(job ? job.title : 'Kho tài năng')}</b> (${U.esc(app.code)})`)]);
+    must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên rút hồ sơ', meta: { from: prev, to: 'withdrawn' }, recruiter_id: app.recruiter_id }), 'act');
+    await N.settle([N.telegram(`↩️ <b>${U.esc(cand.full_name)}</b> vừa rút hồ sơ <b>${U.esc(job ? job.title : 'Kho tài năng')}</b> (${U.esc(app.code)})`, T.notifyTarget(rec).chat)]);
     app.status = 'withdrawn';
   }
 
@@ -56,6 +58,7 @@ exports.handler = U.wrap(async (event) => {
   const pool = !app.job_id && app.status === 'new';
   return U.json(200, {
     code: app.code,
+    profile: rec ? T.publicProfile(rec) : null,
     candidate_name: cand.full_name,
     job_title: job ? job.title : null,
     applied_at: app.created_at,

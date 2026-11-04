@@ -13,13 +13,21 @@
   var S = {
     jobs: [], cands: [], apps: [], stages: [], ST: {}, tab: 'overview', open: null,
     f: { q: '', tech: [], dom: [], minY: '', openOnly: false, sort: 'new', techLimit: 12, domLimit: 8 },
-    pjob: '', pollN: 0, pollT: null, unread: 0, threads: [],
+    pjob: '', pollN: 0, pollT: null, unread: 0, threads: [], me: null, viewing: null, as: store('lh_as'), recs: [],
   };
+  function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k) || ''; if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) {} return v || ''; }
+  var VIEWS = {};
   var NAV = [['overview', 'Tổng quan', '◧'], ['candidates', 'Ứng viên', '▤'], ['pipeline', 'Pipeline', '◈'], ['jobs', 'Việc làm', '▦'], ['matching', 'Matching', '◎'], ['report', 'Báo cáo', '▥'], ['inbox', 'Hỏi đáp', '✉']];
+
+  function navList() {
+    var l = NAV.concat([['settings', 'Cài đặt', '⚙']]);
+    if (S.me && S.me.role === 'admin') l.push(['recruiters', 'Recruiter', '☷']);
+    return l;
+  }
 
   /* ---------- tiện ích ---------- */
   function api(action, data) {
-    return fetch('/api/admin', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lh': '1' }, body: JSON.stringify(Object.assign({ action: action }, data || {})) })
+    return fetch('/api/admin', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lh': '1' }, body: JSON.stringify(Object.assign({ action: action }, data || {}, S.as ? { as: S.as } : {})) })
       .then(function (r) {
         return r.json().catch(function () { return {}; }).then(function (j) {
           if (r.status === 401) { showLogin(); throw new Error('Phiên đăng nhập đã hết, bạn đăng nhập lại nhé.'); }
@@ -29,6 +37,7 @@
       });
   }
   function apiForm(fd) {
+    if (S.as) fd.append('as', S.as);
     return fetch('/api/admin', { method: 'POST', headers: { 'x-lh': '1' }, body: fd }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
         if (r.status === 401) { showLogin(); throw new Error('Phiên đăng nhập đã hết, bạn đăng nhập lại nhé.'); }
@@ -82,22 +91,78 @@
   function jobApps() { return S.apps.filter(function (a) { return !!a.job_id; }); }
   function activeApps() { return jobApps().filter(function (a) { return TERM.indexOf(a.status) < 0; }); }
 
-  /* ---------- đăng nhập ---------- */
-  function showLogin() {
-    $('#app').classList.add('hide'); $('#login').classList.remove('hide'); closeLayer(true);
-    setTimeout(function () { var p = $('#pw'); if (p) p.focus(); }, 50);
+  /* ---------- đăng nhập / đăng ký ---------- */
+  var AUTH = { google: false, supabase_url: '' };
+  function post(body) {
+    return fetch('/api/auth', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { var e = new Error(j.error || 'Có lỗi xảy ra.'); e.pending = !!j.pending; throw e; } return j; }); });
   }
-  $('#lf').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var btn = $('#lbtn'), err = $('#lerr'); err.classList.add('hide'); btn.disabled = true; btn.textContent = 'Đang kiểm tra…';
-    fetch('/api/admin-login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: $('#pw').value }) })
-      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'Không đăng nhập được.'); }); })
-      .then(function () { $('#pw').value = ''; boot(); })
-      .catch(function (e2) { err.textContent = e2.message; err.classList.remove('hide'); })
-      .then(function () { btn.disabled = false; btn.textContent = 'Đăng nhập'; });
+  function slug(v) { return String(v || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 30); }
+  function showLogin(mode, arg) {
+    $('#app').classList.add('hide'); $('#login').classList.remove('hide'); closeLayer(true);
+    renderLogin(mode || 'login', arg);
+  }
+  function renderLogin(mode, arg) {
+    var f = function (id, label, type, extra) { return '<div class="field"><label for="' + id + '">' + label + '</label><input class="in" id="' + id + '" type="' + type + '" ' + (extra || '') + '></div>'; };
+    var head = function (t, sub) { return '<span class="logo"><span class="moon" aria-hidden="true"></span>Luna</span><h1>' + t + '</h1><p class="sub">' + sub + '</p><div id="lerr" class="alert err hide" role="alert"></div>'; };
+    var hp = '<input class="hp" type="text" id="l-web" tabindex="-1" autocomplete="off" aria-hidden="true">';
+    var g = AUTH.google ? '<button class="btn ghost block" type="button" id="lgoogle">Tiếp tục với Google</button><div class="lsep"><span>hoặc</span></div>' : '';
+    var h = '';
+    if (mode === 'login') h = head('Đăng nhập', 'Khu vực quản lý tuyển dụng của bạn.') + g + f('l-email', 'Email', 'email', 'autocomplete="username" required') + f('l-pw', 'Mật khẩu', 'password', 'autocomplete="current-password" required') +
+      '<button class="btn block" type="submit" id="lbtn">Đăng nhập</button><p class="lnk"><a href="#" data-lm="forgot">Quên mật khẩu?</a> · <a href="#" data-lm="register">Tạo tài khoản recruiter</a></p>';
+    if (mode === 'register') h = head('Tạo tài khoản recruiter', 'Miễn phí. Tài khoản sẽ được duyệt trước khi dùng, thường trong 1 ngày.') + g + f('l-name', 'Tên hiển thị', 'text', 'autocomplete="name" maxlength="60" required placeholder="Ví dụ: Lam"') +
+      f('l-email', 'Email', 'email', 'autocomplete="username" required') + f('l-pw', 'Mật khẩu (ít nhất 8 ký tự)', 'password', 'autocomplete="new-password" minlength="8" required') +
+      '<div class="field"><label for="l-handle">Đường dẫn trang của bạn</label><div class="hbox"><span>' + esc(location.host) + '/</span><input class="in" id="l-handle" maxlength="30" required placeholder="ten-cua-ban" autocapitalize="none"></div><div class="help">Chữ thường, số, dấu gạch ngang. Ứng viên sẽ vào trang này để xem job của bạn.</div></div>' + hp +
+      '<button class="btn block" type="submit" id="lbtn">Gửi đăng ký</button><p class="lnk"><a href="#" data-lm="login">Đã có tài khoản? Đăng nhập</a></p>';
+    if (mode === 'forgot') h = head('Quên mật khẩu', 'Nhập email đã đăng ký, mình gửi link đặt lại mật khẩu.') + f('l-email', 'Email', 'email', 'autocomplete="username" required') +
+      '<button class="btn block" type="submit" id="lbtn">Gửi link</button><p class="lnk"><a href="#" data-lm="login">Quay lại đăng nhập</a></p>';
+    if (mode === 'reset') h = head('Đặt mật khẩu mới', 'Chọn mật khẩu mới cho tài khoản của bạn.') + f('l-pw', 'Mật khẩu mới (ít nhất 8 ký tự)', 'password', 'autocomplete="new-password" minlength="8" required') +
+      '<button class="btn block" type="submit" id="lbtn">Đổi mật khẩu</button>';
+    if (mode === 'done') h = '<span class="logo"><span class="moon" aria-hidden="true"></span>Luna</span><h1>' + esc(arg.title) + '</h1><p class="sub">' + esc(arg.text) + '</p><p class="lnk"><a href="#" data-lm="login">Về trang đăng nhập</a></p>';
+    $('#lcard').innerHTML = '<form id="lf" data-mode="' + mode + '" novalidate>' + h + '</form>';
+    var first = $('#lf input:not(.hp)'); if (first) setTimeout(function () { first.focus(); }, 50);
+    if (mode === 'register') {
+      var hd = $('#l-handle'); hd.dataset.touched = '';
+      hd.addEventListener('input', function () { hd.dataset.touched = '1'; });
+      $('#l-name').addEventListener('input', function () { if (!hd.dataset.touched) hd.value = slug($('#l-name').value); });
+    }
+    var gb = $('#lgoogle'); if (gb) gb.addEventListener('click', function () { location.href = AUTH.supabase_url + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(location.origin + '/admin/'); });
+    $('#lf').addEventListener('submit', function (e) { e.preventDefault(); submitAuth(mode, arg); });
+  }
+  function submitAuth(mode, arg) {
+    var btn = $('#lbtn'), err = $('#lerr'), label = btn.textContent, v = function (id) { var el = $('#' + id); return el ? el.value : ''; };
+    err.classList.add('hide'); btn.disabled = true; btn.textContent = 'Đang xử lý…';
+    var body = { action: mode, email: v('l-email').trim(), password: v('l-pw') };
+    if (mode === 'register') Object.assign(body, { display_name: v('l-name').trim(), handle: slug(v('l-handle')), website: v('l-web') });
+    if (mode === 'reset') body = { action: 'reset', token: arg, password: v('l-pw') };
+    post(body).then(function () {
+      if (mode === 'login') { store('lh_as', ''); S.as = ''; return boot(); }
+      if (mode === 'register') return renderLogin('done', { title: 'Đã nhận đăng ký', text: 'Cảm ơn bạn! Tài khoản đang chờ duyệt. Mình sẽ gửi email ngay khi được duyệt, sau đó bạn đăng nhập và dùng bình thường.' });
+      if (mode === 'forgot') return renderLogin('done', { title: 'Kiểm tra email của bạn', text: 'Nếu email này đã đăng ký, mình vừa gửi link đặt lại mật khẩu. Link hết hạn sau ít phút.' });
+      if (mode === 'reset') { history.replaceState(null, '', '/admin/'); return renderLogin('done', { title: 'Đã đổi mật khẩu', text: 'Bạn đăng nhập lại bằng mật khẩu mới nhé.' }); }
+    }).catch(function (e) {
+      if (e.pending) return renderLogin('done', { title: 'Tài khoản đang chờ duyệt', text: e.message });
+      err.textContent = e.message; err.classList.remove('hide'); btn.disabled = false; btn.textContent = label;
+    });
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-lm]'); if (!a) return; e.preventDefault(); renderLogin(a.getAttribute('data-lm'));
   });
   function logout() {
-    fetch('/api/admin-login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ logout: true }) }).then(showLogin);
+    post({ action: 'logout' }).then(function () { store('lh_as', ''); S.as = ''; S.me = null; showLogin('login'); });
+  }
+  /** Đăng nhập Google: Supabase đưa về /admin/#access_token=... */
+  function googleReturn() {
+    var m = /[#&]access_token=([^&]+)/.exec(location.hash);
+    if (!m) return false;
+    var token = decodeURIComponent(m[1]);
+    history.replaceState(null, '', '/admin/');
+    showLogin('login');
+    post({ action: 'google', access_token: token }).then(boot).catch(function (e) {
+      if (e.pending) return renderLogin('done', { title: 'Tài khoản đang chờ duyệt', text: e.message });
+      renderLogin('login'); var er = $('#lerr'); er.textContent = e.message; er.classList.remove('hide');
+    });
+    return true;
   }
 
   /* ---------- khởi động ---------- */
@@ -106,13 +171,15 @@
     api('bootstrap').then(function (b) {
       return Promise.all([api('candidates.list'), api('apps.list')]).then(function (l) { return [b, l[0], l[1]]; });
     }).then(function (r) {
+      S.me = r[0].me; S.viewing = r[0].viewing;
       S.jobs = r[0].jobs; S.unread = r[0].unread_threads || 0; S.stages = r[0].stages; S.ST = {}; S.stages.forEach(function (s) { S.ST[s.key] = s; });
       S.cands = r[1].candidates.map(prep); S.apps = r[2].applications;
       $('#login').classList.add('hide'); $('#app').classList.remove('hide');
-      shell(); route(); ensurePoll();
+      shell(); asBar(); route(); ensurePoll();
     }).catch(function (e) {
-      if (/đăng nhập/.test(e.message)) return;
-      showLogin(); var er = $('#lerr'); er.textContent = e.message; er.classList.remove('hide');
+      if (/đăng nhập lại/.test(e.message)) return;
+      if (S.as && /Không tìm thấy|quyền/.test(e.message)) { S.as = ''; store('lh_as', ''); return boot(); }
+      showLogin('login'); var er = $('#lerr'); er.textContent = /Chưa đăng nhập/.test(e.message) ? '' : e.message; if (er.textContent) er.classList.remove('hide');
     });
   }
   function refreshApps() { return api('apps.list').then(function (r) { S.apps = r.applications; renderNav(); }); }
@@ -120,10 +187,10 @@
   function refreshJobs() { return api('bootstrap').then(function (r) { S.jobs = r.jobs; S.unread = r.unread_threads || 0; renderNav(); }); }
 
   function shell() {
-    var rail = NAV.map(function (n) { return '<a class="nv" data-nav="' + n[0] + '" href="#/' + n[0] + '"><span class="i">' + n[2] + '</span>' + n[1] + '<span class="ct num" data-ct="' + n[0] + '"></span></a>'; }).join('');
-    var tabs = NAV.map(function (n) { return '<a data-nav="' + n[0] + '" href="#/' + n[0] + '"><i>' + n[2] + '</i>' + n[1] + '</a>'; }).join('');
+    var rail = navList().map(function (n) { return '<a class="nv" data-nav="' + n[0] + '" href="#/' + n[0] + '"><span class="i">' + n[2] + '</span>' + n[1] + '<span class="ct num" data-ct="' + n[0] + '"></span></a>'; }).join('');
+    var tabs = navList().map(function (n) { return '<a data-nav="' + n[0] + '" href="#/' + n[0] + '"><i>' + n[2] + '</i>' + n[1] + '</a>'; }).join('');
     $('#app').innerHTML = '<div class="shell"><aside class="rail"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a>' + rail +
-      '<span class="sp"></span><button class="nv" data-theme-toggle type="button"><span class="i">◐</span>Sáng / tối</button><a class="nv" href="/" target="_blank" rel="noopener"><span class="i">↗</span>Trang công khai</a><button class="nv" data-act="logout" type="button"><span class="i">⎋</span>Đăng xuất</button></aside>' +
+      '<span class="sp"></span><button class="nv" data-theme-toggle type="button"><span class="i">◐</span>Sáng / tối</button><a class="nv" href="' + pubUrl() + '" target="_blank" rel="noopener"><span class="i">↗</span>Trang công khai</a><button class="nv" data-act="logout" type="button"><span class="i">⎋</span>Đăng xuất</button></aside>' +
       '<main class="main"><div class="mtop"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a><span class="sp"></span>' + '<button class="theme-btn" type="button" data-theme-toggle aria-label="Đổi giao diện sáng hoặc tối" title="Đổi giao diện sáng / tối"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>' + '<button class="b sm" data-act="logout" type="button">Đăng xuất</button></div><div id="view"></div></main>' +
       '<nav class="tabbar" aria-label="Điều hướng">' + tabs + '</nav></div>';
   }
@@ -133,8 +200,77 @@
     $$('[data-ct]').forEach(function (el) { var v = ct[el.getAttribute('data-ct')]; el.textContent = v == null ? '' : v; });
   }
 
+  function pubUrl() { var h = (S.viewing || S.me || {}).handle; return h ? '/' + h : '/'; }
+  function asBar() {
+    var old = $('#asbar'); if (old) old.remove();
+    if (!S.viewing) return;
+    var bar = document.createElement('div'); bar.id = 'asbar'; bar.className = 'asbar';
+    bar.innerHTML = '<span>Đang xem dữ liệu của <b>' + esc(S.viewing.display_name) + '</b> (' + esc(S.viewing.email) + ')</span><button class="b sm" type="button" data-act="as-exit">Quay về dữ liệu của tôi</button>';
+    var main = $('.main'); if (main) main.insertBefore(bar, main.firstChild);
+  }
+
+  /* ---------- cài đặt hồ sơ công khai ---------- */
+  var KINDS = { linkedin: 1, facebook: 1, zalo: 1 };
+  function commText(list) { return (list || []).map(function (c) { return [c.kind, c.name, c.note, c.url].join(' | '); }).join('\n'); }
+  function parseComm(t) {
+    return String(t || '').split('\n').map(function (l) {
+      var p = l.split('|').map(function (x) { return x.trim(); });
+      return p.length >= 4 ? { kind: KINDS[p[0].toLowerCase()] ? p[0].toLowerCase() : 'facebook', name: p[1], note: p[2], url: p[3] } : null;
+    }).filter(Boolean);
+  }
+  VIEWS.settings = function () {
+    var m = S.me, url = location.origin + '/' + m.handle;
+    var f = function (id, label, val, extra, help) { return '<div class="field"><label for="' + id + '">' + label + '</label><input class="i2" id="' + id + '" value="' + esc(val || '') + '" ' + (extra || '') + '>' + (help ? '<div class="help">' + help + '</div>' : '') + '</div>'; };
+    $('#view').innerHTML = '<div class="ph"><h1>Cài đặt</h1></div>' +
+      (S.viewing ? '<div class="alert err" style="margin-bottom:14px">Đây là hồ sơ của chính bạn, không phải của ' + esc(S.viewing.display_name) + '.</div>' : '') +
+      '<form id="pf" class="box setgrid" novalidate>' +
+      '<h2>Trang công khai của bạn</h2><div class="setrow"><div class="pubu"><a href="' + esc('/' + m.handle) + '" target="_blank" rel="noopener">' + esc(url) + '</a> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(url) + '">Chép link</button></div></div>' +
+      '<div class="setrow two">' + f('p-name', 'Tên hiển thị', m.display_name, 'maxlength="60"') + f('p-title', 'Chức danh', m.title, 'maxlength="80" placeholder="Talent Acquisition"') + '</div>' +
+      '<div class="setrow"><div class="field"><label for="p-bio">Giới thiệu ngắn (hiện ở đầu trang)</label><textarea class="i2" id="p-bio" maxlength="400" placeholder="Để trống thì dùng câu giới thiệu mặc định.">' + esc(m.bio || '') + '</textarea></div></div>' +
+      '<div class="setrow two">' + f('p-cemail', 'Email liên hệ công khai', m.contact_email, 'type="email"', 'Hiện ở chân trang và dùng làm địa chỉ trả lời email cho ứng viên.') + f('p-zalo', 'Link Zalo', m.zalo, 'placeholder="https://zalo.me/..."') + '</div>' +
+      '<div class="setrow two">' + f('p-fb', 'Link Facebook', m.facebook, 'placeholder="https://facebook.com/..."') + f('p-in', 'Link LinkedIn', m.linkedin, 'placeholder="https://linkedin.com/in/..."') + '</div>' +
+      '<div class="setrow">' + f('p-tg', 'Link Telegram', m.telegram, 'placeholder="https://t.me/..."') + '</div>' +
+      '<div class="setrow"><div class="field"><label for="p-comm">Cộng đồng bạn quản lý hoặc giới thiệu</label><textarea class="i2" id="p-comm" rows="5" placeholder="facebook | Tên nhóm | Nhóm Facebook | https://facebook.com/groups/...">' + esc(commText(m.communities)) + '</textarea><div class="help">Mỗi dòng một nhóm: loại (facebook, linkedin, zalo) | tên | ghi chú | link https.</div></div></div>' +
+      '<h2>Thông báo hồ sơ mới</h2>' +
+      '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', 'Nhắn /start cho bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
+      '<div class="setrow"><button class="b pri" type="submit" id="psave">Lưu thay đổi</button></div></form>';
+    $('#pf').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = $('#psave'); btn.disabled = true;
+      api('profile.save', {
+        display_name: $('#p-name').value, title: $('#p-title').value, bio: $('#p-bio').value, contact_email: $('#p-cemail').value, zalo: $('#p-zalo').value,
+        facebook: $('#p-fb').value, linkedin: $('#p-in').value, telegram: $('#p-tg').value, communities: parseComm($('#p-comm').value),
+        notify_email: $('#p-nemail').value, telegram_chat_id: $('#p-chat').value,
+      }).then(function (r) { S.me = r.me; toast('Đã lưu'); }).catch(fail).then(function () { btn.disabled = false; });
+    });
+  };
+
+  /* ---------- quản lý recruiter (chỉ admin tổng) ---------- */
+  var RST = { pending: ['Chờ duyệt', 'warn'], active: ['Đang hoạt động', 'ok'], suspended: ['Đã khoá', 'err'] };
+  VIEWS.recruiters = function () {
+    if (!S.me || S.me.role !== 'admin') { $('#view').innerHTML = '<div class="none">Bạn không có quyền xem mục này.</div>'; return; }
+    $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
+    api('recruiters.list').then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
+  };
+  function paintRecs() {
+    var box = $('#reclist'); if (!box || S.tab !== 'recruiters') return;
+    var order = { pending: 0, active: 1, suspended: 2 };
+    var list = S.recs.slice().sort(function (a, b) { return order[a.status] - order[b.status]; });
+    box.innerHTML = list.map(function (r) {
+      var st = RST[r.status] || [r.status, ''], self = r.id === S.me.id || r.email.toLowerCase() === (S.me.email || '').toLowerCase();
+      var btns = '';
+      if (r.status === 'pending') btns += '<button class="b pri sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="active">Duyệt</button>';
+      if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="suspended">Khoá</button>';
+      if (r.status === 'suspended') btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="active">Mở khoá</button>';
+      if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="role" data-v="' + (r.role === 'admin' ? 'recruiter' : 'admin') + '">' + (r.role === 'admin' ? 'Hạ xuống recruiter' : 'Cấp quyền admin') + '</button>';
+      if (r.status !== 'pending' && r.id !== S.me.id) btns += '<button class="b sm" type="button" data-act="rec-view" data-id="' + r.id + '">Xem dữ liệu</button>';
+      return '<div class="li rec"><div class="tx"><div class="t1">' + esc(r.display_name) + ' <span class="badge ' + st[1] + '">' + st[0] + '</span>' + (r.role === 'admin' ? ' <span class="badge dup">Admin</span>' : '') + '</div>' +
+        '<div class="t2">' + esc(r.email) + ' · <a href="/' + esc(r.handle) + '" target="_blank" rel="noopener">/' + esc(r.handle) + '</a></div>' +
+        '<div class="t2">' + r.jobs + ' job · ' + r.candidates + ' ứng viên · ' + r.apps + ' hồ sơ · ' + (r.last_login_at ? 'đăng nhập ' + ago(r.last_login_at) + ' trước' : 'chưa đăng nhập') + '</div></div><div class="recb">' + btns + '</div></div>';
+    }).join('') || '<div class="none">Chưa có recruiter nào.</div>';
+  }
+
   /* ---------- định tuyến ---------- */
-  var VIEWS = {};
   function route() {
     var h = location.hash.replace(/^#\/?/, '').split('/');
     var a = h[0] || 'overview', id = h[1] || '';
@@ -660,6 +796,15 @@
       case 'rpreset': { var pv = id; S.rep.preset = pv; if (pv !== 'custom') Object.assign(S.rep, repRange(pv)); S.rep.data = null; return pv === 'custom' ? paintReport() : loadReport(); }
       case 'rcsv': return repCsv();
       case 'logout': return logout();
+      case 'copy-url': return copy(t.getAttribute('data-v'), t);
+      case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
+      case 'rec-view': S.as = id; store('lh_as', id); location.hash = '#/overview'; return boot();
+      case 'rec-set': {
+        var k = t.getAttribute('data-k'), v2 = t.getAttribute('data-v'), pay = { id: id };
+        if (k === 'status' && v2 === 'suspended' && !confirm('Khoá tài khoản này? Họ sẽ không đăng nhập được và job của họ sẽ ẩn khỏi trang công khai.')) return;
+        pay[k] = v2;
+        return api('recruiters.update', pay).then(function () { toast('Đã cập nhật'); return api('recruiters.list'); }).then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
+      }
       case 'close': return closeLayer();
       case 'thread': return openThread(id);
       case 'tpub': return api('threads.publish', { id: id, is_public: t.getAttribute('data-v') === '1' }).then(function (r) { toast(r.is_public ? 'Đã đăng công khai dưới job' : 'Đã gỡ khỏi trang công khai'); return openThread(id); }).catch(fail);
@@ -764,5 +909,13 @@
     if ((e.metaKey || e.ctrlKey) && e.key === 'k' && $('#cq')) { e.preventDefault(); $('#cq').focus(); }
   });
 
-  boot();
+  function init() {
+    fetch('/api/auth').then(function (r) { return r.json(); }).then(function (j) { AUTH = j || AUTH; }).catch(function () {}).then(function () {
+      var rm = /^#\/reset\/([A-Za-z0-9_-]+)/.exec(location.hash);
+      if (rm) return showLogin('reset', rm[1]);
+      if (googleReturn()) return;
+      boot();
+    });
+  }
+  init();
 })();

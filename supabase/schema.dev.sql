@@ -14,6 +14,38 @@ begin
 end;
 $$ language plpgsql;
 
+-- ---------- RECRUITERS (mỗi người một tài khoản, dữ liệu tách riêng) ----------
+create table if not exists lhdev_recruiters (
+  id            uuid primary key default gen_random_uuid(),
+  auth_id       uuid unique,                                   -- id người dùng bên Supabase Auth (trống với tài khoản chủ đăng nhập bằng ADMIN_PASSWORD)
+  email         text not null,
+  email_norm    text generated always as (lower(trim(email))) stored,
+  handle        text not null,                                 -- đường dẫn công khai: lunahouse.click/<handle>
+  display_name  text not null default '',                      -- tên gọi: "Lam"
+  title         text not null default '',                      -- "Talent Acquisition"
+  bio           text not null default '',
+  contact_email text not null default '',
+  zalo          text not null default '',
+  facebook      text not null default '',
+  linkedin      text not null default '',
+  telegram      text not null default '',
+  communities   jsonb not null default '[]'::jsonb,
+  role          text not null default 'recruiter' check (role in ('admin', 'recruiter')),
+  status        text not null default 'pending' check (status in ('pending', 'active', 'suspended')),
+  telegram_chat_id text not null default '',                   -- nhận thông báo hồ sơ mới qua bot Luna
+  notify_email  text not null default '',                      -- trống = dùng email đăng nhập
+  ip_hash       text not null default '',
+  last_login_at timestamptz,
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now()
+);
+create unique index if not exists lhdev_rec_email  on lhdev_recruiters (email_norm);
+create unique index if not exists lhdev_rec_handle on lhdev_recruiters (lower(handle));
+alter table lhdev_recruiters enable row level security;
+drop trigger if exists lhdev_rec_updated on lhdev_recruiters;
+create trigger lhdev_rec_updated before update on lhdev_recruiters
+  for each row execute function lhdev_set_updated_at();
+
 -- ---------- JOBS ----------
 create table if not exists lhdev_jobs (
   id                 uuid primary key default gen_random_uuid(),
@@ -23,6 +55,7 @@ create table if not exists lhdev_jobs (
   job_type           text default 'Full-time',
   salary_text        text default '',                 -- "Thoả thuận", "25–40 triệu"...
   location           text default '',                 -- "Hồ Chí Minh", "Hà Nội", "Remote"...
+  lang               text not null default 'vi',      -- ngôn ngữ hiển thị JD: vi | en
   summary            text default '',
   responsibilities   text default '',                 -- mỗi dòng một ý
   requirements       text default '',
@@ -115,6 +148,36 @@ create table if not exists lhdev_activities (
 );
 create index if not exists lhdev_act_app on lhdev_activities (application_id, created_at);
 
+-- ---------- HỎI ĐÁP DƯỚI JOB (thread riêng tư, admin chọn đăng công khai) ----------
+create table if not exists lhdev_threads (
+  id            uuid primary key default gen_random_uuid(),
+  job_id        uuid not null references lhdev_jobs(id) on delete cascade,
+  token         text not null unique,                  -- link riêng để ứng viên xem hội thoại của mình
+  author_name   text not null,
+  author_email  text not null,
+  is_public     boolean not null default false,        -- chỉ admin bật mới hiện dưới job
+  unread_admin  boolean not null default true,         -- có tin ứng viên mà admin chưa đọc
+  last_from     text not null default 'candidate',     -- candidate | recruiter
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now()
+);
+create index if not exists lhdev_thr_job    on lhdev_threads (job_id, is_public);
+create index if not exists lhdev_thr_update on lhdev_threads (updated_at desc);
+drop trigger if exists lhdev_thr_updated on lhdev_threads;
+create trigger lhdev_thr_updated before update on lhdev_threads
+  for each row execute function lhdev_set_updated_at();
+
+create table if not exists lhdev_messages (
+  id          uuid primary key default gen_random_uuid(),
+  thread_id   uuid not null references lhdev_threads(id) on delete cascade,
+  sender      text not null,                           -- candidate | recruiter
+  body        text not null,
+  ip_hash     text default '',
+  created_at  timestamptz default now()
+);
+create index if not exists lhdev_msg_thread on lhdev_messages (thread_id, created_at);
+create index if not exists lhdev_msg_ip     on lhdev_messages (ip_hash, created_at);
+
 -- ---------- BẢO MẬT ----------
 -- Bật RLS và KHÔNG tạo policy nào: trình duyệt (anon key) không đọc/ghi được gì.
 -- Chỉ Netlify Functions dùng service_role key mới truy cập được.
@@ -122,6 +185,8 @@ alter table lhdev_jobs         enable row level security;
 alter table lhdev_candidates   enable row level security;
 alter table lhdev_applications enable row level security;
 alter table lhdev_activities   enable row level security;
+alter table lhdev_threads      enable row level security;
+alter table lhdev_messages     enable row level security;
 
 -- Bucket lưu CV: private. File chỉ mở được qua link tạm do admin tạo.
 insert into storage.buckets (id, name, public)
@@ -130,4 +195,18 @@ on conflict (id) do nothing;
 
 -- Nếu bạn đã chạy schema trước đây (chưa có cột location), chạy thêm dòng này:
 alter table lhdev_jobs add column if not exists location text default '';
+alter table lhdev_jobs add column if not exists lang text not null default 'vi';
 update storage.buckets set id = id where id = 'lhdev-cv';
+
+-- ---------- NHIỀU RECRUITER: cột chủ sở hữu ----------
+alter table lhdev_jobs         add column if not exists recruiter_id uuid references lhdev_recruiters(id) on delete cascade;
+alter table lhdev_candidates   add column if not exists recruiter_id uuid references lhdev_recruiters(id) on delete cascade;
+alter table lhdev_applications add column if not exists recruiter_id uuid references lhdev_recruiters(id) on delete cascade;
+alter table lhdev_activities   add column if not exists recruiter_id uuid references lhdev_recruiters(id) on delete cascade;
+alter table lhdev_threads      add column if not exists recruiter_id uuid references lhdev_recruiters(id) on delete cascade;
+
+create index if not exists lhdev_jobs_rec  on lhdev_jobs (recruiter_id, status);
+create index if not exists lhdev_cand_rec  on lhdev_candidates (recruiter_id, created_at desc);
+create index if not exists lhdev_app_rec   on lhdev_applications (recruiter_id, updated_at desc);
+create index if not exists lhdev_act_rec   on lhdev_activities (recruiter_id, created_at);
+create index if not exists lhdev_thr_rec   on lhdev_threads (recruiter_id, updated_at desc);

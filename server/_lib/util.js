@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 
 class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra || null; }
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // bỏ I, L, O, 0, 1 cho đỡ nhầm
@@ -109,7 +109,7 @@ function wrap(fn) {
   return async (event, context) => {
     try { return await fn(event, context); }
     catch (e) {
-      if (e instanceof HttpError) return json(e.status, { error: e.message });
+      if (e instanceof HttpError) return json(e.status, { error: e.message, ...(e.extra || {}) });
       console.error(e);
       return json(500, { error: 'Có lỗi hệ thống, bạn thử lại sau ít phút nhé.' });
     }

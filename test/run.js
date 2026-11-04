@@ -62,11 +62,12 @@ test('stage1 lọc theo năm, tech bắt buộc, trạng thái tìm việc', () 
 
 // ---------- admin ----------
 test('đăng nhập: sai mật khẩu 401, đúng thì có cookie HttpOnly', async () => {
-  const bad = await H.invoke(H.F('admin-login'), { body: { password: 'sai' } });
+  const bad = await H.invoke(H.F('auth'), { body: { action: 'login', email: 'owner@example.com', password: 'sai' } });
   assert.strictEqual(bad.status, 401);
   assert.ok(H.calls.some(c => /telegram/.test(c.url) && /sai mật khẩu/.test(c.body.text)), 'báo Telegram khi sai mật khẩu');
-  const ok = await H.invoke(H.F('admin-login'), { body: { password: process.env.ADMIN_PASSWORD } });
-  assert.strictEqual(ok.status, 200);
+  const ok = await H.invoke(H.F('auth'), { body: { action: 'login', email: 'Owner@Example.com', password: process.env.ADMIN_PASSWORD } });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json));
+  assert.strictEqual(ok.json.me.role, 'admin');
   const sc = ok.headers['set-cookie'];
   assert.match(sc, /lh_admin=/); assert.match(sc, /HttpOnly/); assert.match(sc, /SameSite=Strict/);
   cookie = sc.split(';')[0];
@@ -618,6 +619,245 @@ test('kéo thả pipeline: đổi trạng thái không kèm notify thì không g
   await assert.rejects(() => admin('apps.update', { id: row.id, status: 'khong-co' }), /400/);
   const r2 = await admin('apps.update', { id: row.id, status: 'offer', notify: true });
   assert.strictEqual(r2.emailed, true);
+});
+
+
+// ---------- nhiều recruiter ----------
+const as = (ck) => async (action, data = {}) => {
+  const r = await H.invoke(H.F('admin-api'), { body: { action, ...data }, headers: { cookie: ck, 'x-lh': '1' } });
+  if (r.status !== 200) { const e = new Error(`${action} → ${r.status} ${JSON.stringify(r.json)}`); e.status = r.status; throw e; }
+  return r.json;
+};
+const auth = (body, headers) => H.invoke(H.F('auth'), { body, headers: headers || ip(90) });
+let ckB = '', recB = null, jobB = null;
+
+test('đăng ký: kiểm tra đầu vào, honeypot, email/handle trùng, tài khoản chủ không đăng ký được', async () => {
+  const base = { action: 'register', email: 'binh@example.com', password: 'matkhau-dai', display_name: 'Bình', handle: 'binh-tuyen' };
+  assert.strictEqual((await auth({ ...base, password: '123' })).status, 400);
+  assert.strictEqual((await auth({ ...base, email: 'khong-phai-email' })).status, 400);
+  assert.strictEqual((await auth({ ...base, handle: 'apply' })).status, 400, 'handle bị hệ thống giữ');
+  assert.strictEqual((await auth({ ...base, handle: 'ab' })).status, 400, 'handle quá ngắn');
+  assert.strictEqual((await auth({ ...base, email: 'owner@example.com' })).status, 400, 'email của chủ');
+  const hp = await auth({ ...base, website: 'http://spam' });
+  assert.strictEqual(hp.status, 200); assert.ok(!H.fake.t.lh_recruiters.some(r => r.email === 'binh@example.com'), 'honeypot không tạo tài khoản');
+  const ok = await auth(base);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json)); assert.strictEqual(ok.json.pending, true);
+  recB = H.fake.t.lh_recruiters.find(r => r.email === 'binh@example.com');
+  assert.strictEqual(recB.status, 'pending'); assert.strictEqual(recB.role, 'recruiter'); assert.ok(recB.auth_id);
+  assert.strictEqual((await auth({ ...base, handle: 'khac-nua' })).status, 409, 'email trùng');
+  assert.strictEqual((await auth({ ...base, email: 'khac@example.com', handle: 'Binh-Tuyen' })).status, 409, 'handle trùng không phân biệt hoa thường');
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && /chờ duyệt/.test(c.body.text) && c.body.chat_id === '999'), 'báo chủ qua Telegram');
+});
+test('đăng ký: tối đa 3 lần/giờ/IP', async () => {
+  for (let i = 0; i < 3; i++) assert.strictEqual((await auth({ action: 'register', email: `spam${i}@example.com`, password: 'matkhau-dai', display_name: 'Spam', handle: 'spam-' + i }, ip(88))).status, 200);
+  const blocked = await auth({ action: 'register', email: 'spam9@example.com', password: 'matkhau-dai', display_name: 'Spam', handle: 'spam-9' }, ip(88));
+  assert.strictEqual(blocked.status, 429);
+  assert.strictEqual((await auth({ action: 'register', email: 'spam9@example.com', password: 'matkhau-dai', display_name: 'Spam', handle: 'spam-9' }, ip(89))).status, 200, 'IP khác không bị ảnh hưởng');
+  H.fake.t.lh_recruiters = H.fake.t.lh_recruiters.filter(r => !/^spam/.test(r.email));
+});
+test('đăng nhập: chờ duyệt thì chưa vào được; sai mật khẩu thì 401 chung chung', async () => {
+  const wrong = await auth({ action: 'login', email: 'binh@example.com', password: 'sai-roi-nhe' });
+  assert.strictEqual(wrong.status, 401); assert.strictEqual(wrong.json.error, 'Sai email hoặc mật khẩu.');
+  const unknown = await auth({ action: 'login', email: 'khong-co@example.com', password: 'matkhau-dai' });
+  assert.strictEqual(unknown.status, 401); assert.strictEqual(unknown.json.error, wrong.json.error, 'không lộ email nào đã đăng ký');
+  const pend = await auth({ action: 'login', email: 'binh@example.com', password: 'matkhau-dai' });
+  assert.strictEqual(pend.status, 403); assert.strictEqual(pend.json.pending, true); assert.ok(!pend.headers['set-cookie'], 'chưa có cookie');
+});
+test('admin tổng: duyệt recruiter → gửi email; recruiter thường không dùng được chức năng quản trị', async () => {
+  const list = await admin('recruiters.list');
+  assert.ok(list.recruiters.some(r => r.email === 'binh@example.com' && r.status === 'pending'));
+  H.calls.length = 0;
+  await admin('recruiters.update', { id: recB.id, status: 'active' });
+  assert.ok(H.calls.some(c => /resend/.test(c.url) && c.body.to[0] === 'binh@example.com' && /được duyệt/.test(c.body.subject)));
+  const ok = await auth({ action: 'login', email: 'binh@example.com', password: 'matkhau-dai' });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.json)); assert.strictEqual(ok.json.me.role, 'recruiter');
+  ckB = ok.headers['set-cookie'].split(';')[0];
+  await assert.rejects(() => as(ckB)('recruiters.list'), /403/);
+  await assert.rejects(() => as(ckB)('recruiters.update', { id: recB.id, role: 'admin' }), /403/);
+  const owner = H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com');
+  await assert.rejects(() => admin('recruiters.update', { id: owner.id, status: 'suspended' }), /400/);
+});
+test('cách ly dữ liệu: recruiter B không thấy, không sửa, không xoá dữ liệu của chủ', async () => {
+  const b = as(ckB);
+  const boot = await b('bootstrap');
+  assert.strictEqual(boot.jobs.length, 0); assert.strictEqual(boot.me.handle, 'binh-tuyen');
+  assert.strictEqual((await b('candidates.list')).candidates.length, 0);
+  assert.strictEqual((await b('apps.list')).applications.length, 0);
+  assert.strictEqual((await b('threads.list')).threads.length, 0);
+  const rep = await b('report.get', { from: '2026-01-01', to: '2026-12-31', group: 'month' });
+  assert.strictEqual(rep.totals.received, 0);
+  assert.ok((await admin('report.get', { from: '2026-01-01', to: '2026-12-31', group: 'month' })).totals.received > 0, 'báo cáo của chủ vẫn có số liệu');
+  const owner = H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com');
+  assert.ok(H.fake.t.lh_candidates.some(c => c.recruiter_id === owner.id), 'dữ liệu cũ thuộc về chủ');
+  for (const [a, d] of [['candidates.get', { id: candId }], ['candidates.save', { id: candId, full_name: 'Bị sửa' }], ['candidates.parse', { id: candId }], ['candidates.reparse', { id: candId }],
+    ['apps.get', { id: appId }], ['apps.update', { id: appId, status: 'rejected' }], ['activities.add', { application_id: appId, note: 'xen vào' }],
+    ['jobs.save', { id: jobId, title: 'Bị đổi tên' }], ['match.stage1', { job_id: jobId }], ['match.score', { job_id: jobId, ids: [candId] }],
+    ['apps.create', { job_id: jobId, candidate_id: candId }]]) {
+    await assert.rejects(() => b(a, d), /404/, a + ' phải 404');
+  }
+  await b('candidates.delete', { id: candId }); await b('jobs.delete', { id: jobId }).catch(() => {});
+  assert.ok(H.fake.t.lh_candidates.some(c => c.id === candId), 'xoá chéo không có tác dụng');
+  assert.ok(H.fake.t.lh_jobs.some(j => j.id === jobId));
+  assert.notStrictEqual(H.fake.t.lh_candidates.find(c => c.id === candId).full_name, 'Bị sửa');
+  const res = await require('../server/cv').stream(new Request('http://x/api/cv?id=' + candId, { headers: { cookie: ckB, 'x-lh': '1' } }), async () => { throw new Error('không được tải'); });
+  assert.strictEqual(res.status, 404, 'CV của người khác không tải được');
+  const mine = await require('../server/cv').stream(new Request('http://x/api/cv?id=' + candId, { headers: { cookie, 'x-lh': '1' } }), async () => new Response('pdf', { status: 200 }));
+  assert.strictEqual(mine.status, 200);
+});
+test('cách ly: B không giả mạo được recruiter_id/as; chỉ admin tổng mới xem hộ (as)', async () => {
+  const b = as(ckB);
+  const owner = H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com');
+  await assert.rejects(() => b('bootstrap', { as: owner.id }), /403/);
+  const j = (await b('jobs.save', { title: 'QA Engineer của Bình', status: 'open', must_have_tech: 'Playwright', recruiter_id: owner.id, _rid: owner.id })).job;
+  assert.strictEqual(j.recruiter_id, recB.id, 'recruiter_id lấy từ phiên, không từ client');
+  jobB = j;
+  const viewB = await admin('bootstrap', { as: recB.id });
+  assert.strictEqual(viewB.jobs.length, 1); assert.strictEqual(viewB.viewing.handle, 'binh-tuyen');
+  assert.strictEqual((await admin('bootstrap')).viewing, null);
+  assert.ok((await admin('bootstrap')).jobs.every(x => x.recruiter_id !== recB.id));
+});
+test('trang công khai theo recruiter: "/" là của chủ, /api/jobs?handle= là của B, profile không lộ email đăng nhập', async () => {
+  const root = (await H.invoke(H.F('jobs-public'), { method: 'GET' })).json;
+  assert.ok(root.jobs.length >= 1 && root.jobs.every(x => x.title !== 'QA Engineer của Bình'));
+  assert.strictEqual(root.profile.handle, 'lam'); assert.strictEqual(root.profile.is_default, true);
+  const pb = (await H.invoke(H.F('jobs-public'), { method: 'GET', query: { handle: 'Binh-Tuyen' } })).json;
+  assert.deepStrictEqual(pb.jobs.map(x => x.title), ['QA Engineer của Bình']);
+  assert.strictEqual(pb.profile.display_name, 'Bình');
+  assert.ok(!('email' in pb.profile) && !('notify_email' in pb.profile) && !('telegram_chat_id' in pb.profile) && !('id' in pb.profile));
+  assert.ok(!JSON.stringify(pb).includes('binh@example.com'));
+  assert.strictEqual((await H.invoke(H.F('jobs-public'), { method: 'GET', query: { handle: 'khong-ton-tai' } })).status, 404);
+  const one = (await H.invoke(H.F('jobs-public'), { method: 'GET', query: { slug: jobB.slug } })).json;
+  assert.strictEqual(one.profile.handle, 'binh-tuyen');
+});
+test('hồ sơ & thông báo: ứng viên nộp vào job của B thuộc về B, tách khỏi cùng email bên chủ, báo đúng Telegram/email của B', async () => {
+  const owner = H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com');
+  await as(ckB)('profile.save', { telegram_chat_id: '555123', notify_email: 'thongbao-binh@example.com', contact_email: 'binh.contact@example.com' });
+  H.calls.length = 0;
+  const r = await H.invoke(H.F('apply'), { body: applyBody({ job_slug: jobB.slug }), headers: ip(91) });   // cùng email An.Nguyen đã nộp bên chủ
+  assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  const appB = H.fake.t.lh_applications.find(a => a.code === r.json.code);
+  assert.strictEqual(appB.recruiter_id, recB.id);
+  const cands = H.fake.t.lh_candidates.filter(c => c.email_norm === 'an.nguyen@example.com');
+  assert.strictEqual(cands.length, 2, 'mỗi recruiter một bản ghi ứng viên riêng');
+  assert.deepStrictEqual(cands.map(c => c.recruiter_id).sort(), [owner.id, recB.id].sort());
+  assert.ok(H.fake.t.lh_activities.filter(a => a.application_id === appB.id).every(a => a.recruiter_id === recB.id));
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && c.body.chat_id === '555123'), 'Telegram của B');
+  assert.ok(!H.calls.some(c => /telegram/.test(c.url) && c.body.chat_id === '999'), 'không báo nhầm chủ');
+  assert.ok(H.calls.some(c => /resend/.test(c.url) && c.body.to[0] === 'thongbao-binh@example.com'), 'email thông báo của B');
+  const receipt = H.calls.find(c => /resend/.test(c.url) && c.body.to[0] === 'an.nguyen@example.com');
+  assert.strictEqual(receipt.body.reply_to, 'binh.contact@example.com'); assert.match(receipt.body.from, /^Bình · Luna </);
+  assert.strictEqual((await as(ckB)('candidates.list')).candidates.length, 1);
+  assert.strictEqual((await as(ckB)('apps.list')).applications.length, 1);
+  assert.ok((await admin('apps.list')).applications.every(a => a.id !== appB.id), 'chủ không thấy hồ sơ của B trong pipeline của mình');
+});
+test('kho tài năng theo trang: gửi CV vào /handle của B thuộc về B; handle lạ thì 404; trang chủ vào kho của chủ', async () => {
+  const mk = (o) => applyBody({ job_slug: '', full_name: 'Kho Của Bình', email: 'kho.binh@example.com', phone_number: '0905000771', ...o });
+  const rB = await H.invoke(H.F('apply'), { body: mk({ handle: 'binh-tuyen' }), headers: ip(92) });
+  assert.strictEqual(rB.status, 200, JSON.stringify(rB.json));
+  assert.strictEqual(H.fake.t.lh_applications.find(a => a.code === rB.json.code).recruiter_id, recB.id);
+  assert.strictEqual((await H.invoke(H.F('apply'), { body: mk({ handle: 'khong-co-ai' }), headers: ip(93) })).status, 404);
+  const rO = await H.invoke(H.F('apply'), { body: mk({ email: 'kho.chu@example.com', phone_number: '0905000772' }), headers: ip(94) });
+  assert.strictEqual(rO.status, 200);
+  assert.strictEqual(H.fake.t.lh_applications.find(a => a.code === rO.json.code).recruiter_id, H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com').id);
+});
+test('tra cứu & hỏi đáp trả hồ sơ công khai đúng recruiter', async () => {
+  const code = H.fake.t.lh_applications.find(a => a.recruiter_id === recB.id).code;
+  const tr = await H.invoke(H.F('track'), { body: { code, contact: 'an.nguyen@example.com' }, headers: ip(95) });
+  assert.strictEqual(tr.status, 200); assert.strictEqual(tr.json.profile.handle, 'binh-tuyen');
+  H.calls.length = 0;
+  const q = await H.invoke(H.F('questions'), { body: { action: 'ask', job_slug: jobB.slug, name: 'Hỏi Thử', email: 'hoi@example.com', body: 'Vị trí này có remote không?' }, headers: ip(96) });
+  assert.strictEqual(q.status, 200);
+  const th = H.fake.t.lh_threads.find(t => t.job_id === jobB.id);
+  assert.strictEqual(th.recruiter_id, recB.id);
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && c.body.chat_id === '555123'));
+  assert.strictEqual((await as(ckB)('threads.list')).threads.length, 1);
+  assert.ok((await admin('threads.list')).threads.every(t => t.id !== th.id));
+  await assert.rejects(() => admin('threads.get', { id: th.id }), /404/);
+  const view = (await H.invoke(H.F('questions'), { method: 'GET', query: { t: th.token } })).json;
+  assert.strictEqual(view.profile.handle, 'binh-tuyen');
+});
+test('hồ sơ công khai: link phải là https, email đúng định dạng, cộng đồng được lọc', async () => {
+  const b = as(ckB);
+  await assert.rejects(() => b('profile.save', { zalo: 'javascript:alert(1)' }), /400/);
+  await assert.rejects(() => b('profile.save', { facebook: 'http://khong-bao-mat' }), /400/);
+  await assert.rejects(() => b('profile.save', { contact_email: 'abc' }), /400/);
+  await assert.rejects(() => b('profile.save', { telegram_chat_id: 'abc' }), /400/);
+  const r = await b('profile.save', { display_name: 'Bình Tuyển', title: 'IT Recruiter', bio: 'Mình tuyển dev.', communities: [
+    { kind: 'facebook', name: 'Nhóm A', note: 'FB', url: 'https://facebook.com/groups/a' }, { kind: 'x', name: 'Xấu', url: 'javascript:alert(1)' }, { kind: 'zalo', name: '', url: 'https://zalo.me/g/1' }] });
+  assert.strictEqual(r.me.communities.length, 1); assert.strictEqual(r.me.display_name, 'Bình Tuyển');
+  assert.strictEqual(r.me.handle, 'binh-tuyen', 'handle không đổi qua profile.save');
+  await b('profile.save', { handle: 'chiem-quyen', role: 'admin', status: 'active' });
+  const row = H.fake.t.lh_recruiters.find(x => x.id === recB.id);
+  assert.strictEqual(row.handle, 'binh-tuyen'); assert.strictEqual(row.role, 'recruiter');
+  const pub = (await H.invoke(H.F('jobs-public'), { method: 'GET', query: { handle: 'binh-tuyen' } })).json.profile;
+  assert.strictEqual(pub.title, 'IT Recruiter'); assert.strictEqual(pub.communities[0].name, 'Nhóm A');
+});
+test('SEO nhiều recruiter: sitemap có trang của B và job của B; JSON-LD ghi tên B', async () => {
+  const sm = await require('../server/job-page').sitemap();
+  assert.ok(sm.includes('/binh-tuyen<') && sm.includes('/jobs/' + jobB.slug));
+  const html = await require('../server/job-page').render('<html lang="vi"><head><title>x</title></head><body></body></html>', jobB.slug, 'lunahouse.click');
+  assert.ok(/Bình Tuyển/.test(html) && /canonical/.test(html));
+});
+test('quên mật khẩu: không lộ email nào có tài khoản; link dùng một lần; đổi xong đăng nhập bằng mật khẩu mới', async () => {
+  H.calls.length = 0;
+  const none = await auth({ action: 'forgot', email: 'khong-co@example.com' });
+  assert.strictEqual(none.status, 200); assert.ok(!H.calls.some(c => /resend/.test(c.url)));
+  const yes = await auth({ action: 'forgot', email: 'binh@example.com' });
+  assert.strictEqual(yes.status, 200);
+  const mail = H.calls.find(c => /resend/.test(c.url) && c.body.to[0] === 'binh@example.com');
+  assert.ok(mail, 'có email đặt lại'); const token = /#\/reset\/([^"]+)"/.exec(mail.body.html)[1];
+  assert.strictEqual((await auth({ action: 'reset', token, password: '123' })).status, 400);
+  assert.strictEqual((await auth({ action: 'reset', token: 'x', password: 'matkhau-moi-ne' })).status, 400);
+  assert.strictEqual((await auth({ action: 'reset', token, password: 'matkhau-moi-ne' })).status, 200);
+  assert.strictEqual((await auth({ action: 'reset', token, password: 'lan-hai-khong-duoc' })).status, 400, 'link chỉ dùng một lần');
+  assert.strictEqual((await auth({ action: 'login', email: 'binh@example.com', password: 'matkhau-dai' })).status, 401);
+  assert.strictEqual((await auth({ action: 'login', email: 'binh@example.com', password: 'matkhau-moi-ne' })).status, 200);
+});
+test('đăng nhập Google: tắt thì từ chối; bật thì tạo tài khoản chờ duyệt, đúng người cũ thì vào', async () => {
+  H.googleTokens.set('g-tok-1', { id: 'g-id-1', email: 'gia@example.com', name: 'Gia Google' });
+  assert.strictEqual((await auth({ action: 'google', access_token: 'g-tok-1' })).status, 400);
+  process.env.GOOGLE_LOGIN = '1';
+  try {
+    assert.strictEqual((await auth({ action: 'google', access_token: 'bậy' })).status, 401);
+    const first = await auth({ action: 'google', access_token: 'g-tok-1' });
+    assert.strictEqual(first.status, 403); assert.strictEqual(first.json.pending, true);
+    const gia = H.fake.t.lh_recruiters.find(r => r.email === 'gia@example.com');
+    assert.strictEqual(gia.status, 'pending'); assert.strictEqual(gia.display_name, 'Gia Google'); assert.match(gia.handle, /^gia/);
+    await admin('recruiters.update', { id: gia.id, status: 'active' });
+    const again = await auth({ action: 'google', access_token: 'g-tok-1' });
+    assert.strictEqual(again.status, 200); assert.match(again.headers['set-cookie'], /lh_admin=/);
+    H.googleTokens.set('g-tok-2', { id: 'g-khac', email: 'binh@example.com', name: 'Giả' });
+    assert.strictEqual((await auth({ action: 'google', access_token: 'g-tok-2' })).status, 409, 'email đã gắn tài khoản mật khẩu khác');
+    assert.strictEqual((await H.invoke(H.F('auth'), { method: 'GET' })).json.google, true);
+  } finally { delete process.env.GOOGLE_LOGIN; }
+});
+test('khoá tài khoản: phiên cũ mất hiệu lực ngay, job biến mất khỏi trang công khai, không nhận hồ sơ mới, đăng nhập lại bị chặn', async () => {
+  const keep = await H.invoke(H.F('auth'), { body: { action: 'login', email: 'binh@example.com', password: 'matkhau-moi-ne' }, headers: ip(97) });
+  const ck = keep.headers['set-cookie'].split(';')[0];
+  await admin('recruiters.update', { id: recB.id, status: 'suspended' });
+  await assert.rejects(() => as(ck)('bootstrap'), /403/);
+  assert.strictEqual((await auth({ action: 'login', email: 'binh@example.com', password: 'matkhau-moi-ne' })).status, 403);
+  assert.strictEqual((await H.invoke(H.F('jobs-public'), { method: 'GET', query: { handle: 'binh-tuyen' } })).status, 404);
+  assert.strictEqual((await H.invoke(H.F('jobs-public'), { method: 'GET', query: { slug: jobB.slug } })).status, 404);
+  assert.strictEqual((await H.invoke(H.F('apply'), { body: applyBody({ job_slug: jobB.slug, email: 'moi@example.com', phone_number: '0905000999' }), headers: ip(98) })).status, 404);
+  assert.strictEqual((await H.invoke(H.F('questions'), { body: { action: 'ask', job_slug: jobB.slug, name: 'Ai Đó', email: 'ai@example.com', body: 'Còn tuyển không?' }, headers: ip(99) })).status, 404);
+  assert.ok(!(await require('../server/job-page').sitemap()).includes(jobB.slug));
+  assert.ok(!(await H.invoke(H.F('jobs-public'), { method: 'GET' })).json.jobs.some(j => j.slug === jobB.slug));
+  await admin('recruiters.update', { id: recB.id, status: 'active' });
+  assert.strictEqual((await as(ck)('bootstrap')).jobs.length, 1, 'mở khoá là dùng lại được');
+});
+test('tài khoản chủ: nhận dữ liệu cũ chưa có chủ; trang chủ tự tạo tài khoản chủ khi chưa đăng nhập lần nào', async () => {
+  const T = require('../server/_lib/tenant');
+  const saved = { r: H.fake.t.lh_recruiters, j: H.fake.t.lh_jobs };
+  H.fake.t.lh_recruiters = []; H.fake.t.lh_jobs = [{ id: 'old-job', slug: 'cu-ky', title: 'Job cũ', status: 'open', recruiter_id: null, created_at: new Date().toISOString() }];
+  try {
+    const root = (await H.invoke(H.F('jobs-public'), { method: 'GET' })).json;
+    assert.deepStrictEqual(root.jobs.map(j => j.slug), ['cu-ky'], 'job chưa có chủ được gán cho chủ ngay lần mở đầu tiên');
+    assert.strictEqual(H.fake.t.lh_recruiters.length, 1); assert.strictEqual(H.fake.t.lh_recruiters[0].role, 'admin');
+    assert.strictEqual(H.fake.t.lh_jobs[0].recruiter_id, H.fake.t.lh_recruiters[0].id);
+    assert.ok(root.profile.communities.length >= 4, 'cộng đồng cũ được giữ');
+    await T.ensureOwner(); assert.strictEqual(H.fake.t.lh_recruiters.length, 1, 'không tạo trùng');
+  } finally { H.fake.t.lh_recruiters = saved.r; H.fake.t.lh_jobs = saved.j; }
 });
 
 (async () => {

@@ -2,6 +2,15 @@
 (function () {
   'use strict';
   var LH = window.LH || {};
+  /* Mỗi recruiter một trang: /<handle>. Trang chủ "/" là trang của tài khoản chủ. Thông tin hiển thị lấy từ API (hồ sơ recruiter). */
+  var HANDLE = (function () {
+    var page = document.body ? document.body.getAttribute('data-page') : '';
+    var seg = decodeURIComponent((location.pathname.split('/')[1] || '')).toLowerCase();
+    if (page === 'home' && /^[a-z0-9-]{3,30}$/.test(seg)) return seg;
+    var h = new URLSearchParams(location.search).get('h');
+    return h && /^[a-z0-9-]{3,30}$/.test(h.toLowerCase()) ? h.toLowerCase() : '';
+  })();
+  var home_ = function () { return LH.isOwnerHome ? '/' : LH.handle ? '/' + LH.handle : (HANDLE ? '/' + HANDLE : '/'); };
   var $ = function (s, el) { return (el || document).querySelector(s); };
   var esc = function (s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -46,14 +55,16 @@
     document.body.insertBefore(d, document.body.firstChild);
   }
 
+  var stripped = false;
   function chrome() {
-    devStrip();
+    if (!stripped) { stripped = true; devStrip(); }
     var page = document.body.getAttribute('data-page');
-    var nav = [['/', 'Việc làm', 'home'], ['/apply', 'Gửi CV', 'apply'], ['/track', 'Tra cứu', 'track']];
+    var hp = LH.handle && !LH.isOwnerHome ? '?h=' + encodeURIComponent(LH.handle) : '';
+    var nav = [[home_(), 'Việc làm', 'home'], ['/apply' + hp, 'Gửi CV', 'apply'], ['/track', 'Tra cứu', 'track']];
     var top = $('#top');
     if (top) {
       top.className = 'top';
-      top.innerHTML = '<div class="wrap"><a class="logo" href="/"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a><span class="tagline">Personal recruiting · IT &amp; Game</span>' +
+      top.innerHTML = '<div class="wrap"><a class="logo" href="' + home_() + '"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a><span class="tagline">Personal recruiting · IT &amp; Game</span>' +
         '<nav class="nav" aria-label="Điều hướng">' + nav.map(function (n) {
           return '<a href="' + n[0] + '"' + (page === n[2] || (page === 'job' && n[2] === 'home') ? ' aria-current="page"' : '') + '>' + n[1] + '</a>';
         }).join('') + '</nav>' + '<button class="theme-btn" type="button" data-theme-toggle aria-label="Đổi giao diện sáng hoặc tối" title="Đổi giao diện sáng / tối"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>' + '</div>';
@@ -69,6 +80,18 @@
       foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
         contact.join('') + '<span class="sp"><a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
+  }
+
+  /** Nhận hồ sơ công khai của recruiter từ API rồi vẽ lại phần đầu/cuối trang. */
+  function applyProfile(p) {
+    if (!p) return;
+    LH.handle = p.handle; LH.isOwnerHome = !!p.is_default; LH.recruiter = p.display_name || ''; LH.title = p.title || ''; LH.contactEmail = p.contact_email || '';
+    LH.zalo = p.zalo || ''; LH.facebook = p.facebook || ''; LH.linkedin = p.linkedin || ''; LH.telegram = p.telegram || '';
+    LH.communities = p.communities || [];
+    chrome(); communities();
+    var name = p.display_name || 'mình', lede = $('#lede'), eb = $('#eyebrow-t');
+    if (eb && p.title) eb.textContent = p.title;
+    if (lede) lede.textContent = p.bio || ('Mình là ' + name + (p.title ? ', làm ' + p.title : '') + ', đang tuyển cho các công ty IT và game. Đây là các vị trí mình đang tuyển: JD đầy đủ, nộp CV một lần, và bạn tự tra cứu được hồ sơ đang ở bước nào mà không phải hỏi lại.');
   }
 
   function communities() {
@@ -121,7 +144,7 @@
       state.level = b.getAttribute('data-l'); pills(); render();
     });
     $('#q').addEventListener('input', function (e) { state.q = e.target.value.trim(); render(); });
-    api('/api/jobs').then(function (r) { state.jobs = r.jobs || []; pills(); render(); })
+    api('/api/jobs' + (HANDLE ? '?handle=' + encodeURIComponent(HANDLE) : '')).then(function (r) { applyProfile(r.profile); state.jobs = r.jobs || []; pills(); render(); })
       .catch(function () { box.innerHTML = '<div class="empty"><h3>Không tải được danh sách</h3><p>Bạn thử tải lại trang sau ít phút nhé.</p></div>'; });
   }
 
@@ -131,11 +154,12 @@
     var app = $('#app');
     api('/api/jobs?slug=' + encodeURIComponent(slug)).then(function (r) {
       var j = r.job, t = tFor(j.lang);
+      applyProfile(r.profile);
       document.title = j.title + ' · ' + (LH.brand || 'Luna');
       var meta = $('meta[name="description"]'); if (meta) meta.setAttribute('content', (j.summary || j.title).slice(0, 155));
       var nice = (j.nice_to_have_tech || []);
       app.innerHTML =
-        '<div class="wrap"><div class="crumb"><a href="/">' + t('← Tất cả vị trí', '← All roles') + '</a></div>' +
+        '<div class="wrap"><div class="crumb"><a href="' + home_() + '">' + t('← Tất cả vị trí', '← All roles') + '</a></div>' +
         '<header class="jd-head">' + (j.level ? '<span class="tag">' + esc(j.level) + '</span>' : '') + '<h1>' + esc(j.title) + '</h1>' +
         '<div class="jd-meta"><span>' + esc(j.job_type || 'Full-time') + '</span><span>' + esc(j.salary_text || t('Thoả thuận', 'Negotiable')) + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') +
         (Number(j.min_years) ? '<span>' + (j.lang === 'en' ? esc(j.min_years) + '+ years of experience' : 'Từ ' + esc(j.min_years) + ' năm kinh nghiệm') + '</span>' : '') + '</div></header>' +
@@ -223,7 +247,7 @@
       btn.disabled = true; btn.innerHTML = '<span class="spin"></span> ' + t('Đang gửi…', 'Sending…');
       var fd = new FormData();
       var put = function (k, val) { fd.append(k, val == null ? '' : val); };
-      put('job_slug', job ? job.slug : ''); put('full_name', v('#f-name')); put('phone_number', v('#f-phone')); put('email', v('#f-email'));
+      put('job_slug', job ? job.slug : ''); put('handle', HANDLE); put('full_name', v('#f-name')); put('phone_number', v('#f-phone')); put('email', v('#f-email'));
       put('address', v('#f-addr')); put('expected_salary', v('#f-sal')); put('notice_period', $('#f-notice').value); put('links', v('#f-links'));
       put('cover_note', v('#f-note')); put('website', form.elements.website.value); put('consent', 'true'); fd.append('cv', file, file.name);
       fetch('/api/apply', { method: 'POST', body: fd }).then(function (res) {
@@ -261,7 +285,10 @@
     var bar = $('#sticky'); if (bar) bar.classList.add('gone');
   }
 
-  function applyPage() { mountApply($('#form'), null); }
+  function applyPage() {
+    mountApply($('#form'), null);
+    api('/api/jobs' + (HANDLE ? '?handle=' + encodeURIComponent(HANDLE) : '')).then(function (r) { applyProfile(r.profile); }).catch(function () {});
+  }
 
   /* ---------- tra cứu ---------- */
   function trackPage() {
@@ -271,6 +298,7 @@
     var last = null;
 
     function render(r) {
+      applyProfile(r.profile);
       last = { code: r.code, contact: $('#t-contact').value.trim() };
       var good = r.status === 'hired' || r.status === 'offer';
       var events = {}; (r.timeline || []).forEach(function (t) { events[t.status] = t.at; });
@@ -358,6 +386,7 @@
     function load() {
       return api('/api/questions?t=' + encodeURIComponent(token)).then(function (r) {
         var j = r.job;
+        applyProfile(r.profile);
         out.innerHTML = '<div class="qa-meta">' + (j ? 'Vị trí: <a href="/jobs/' + esc(j.slug) + '">' + esc(j.title) + '</a>' : '') + '</div>' +
           '<div class="qa-thread private">' + r.messages.map(function (m) {
             return '<div class="qa-msg ' + (m.from === 'recruiter' ? 'rec' : 'cand') + '"><b>' + (m.from === 'recruiter' ? esc(LH.recruiter || 'Luna') : 'Bạn') + ' <span>' + fmtDate(m.at, true) + '</span></b><p>' + esc(m.body) + '</p></div>';

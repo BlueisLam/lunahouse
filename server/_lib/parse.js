@@ -52,8 +52,8 @@ async function parseCandidate(id, opts = {}) {
     if (cand.source === 'admin') {
       const em = (merged.email || '').toLowerCase(), ph = U.phoneNorm(merged.phone_number);
       let other = null;
-      if (em) other = must(await db.from('lh_candidates').select('id').eq('email_norm', em).limit(2), 'dup email').find(x => x.id !== id);
-      if (!other && ph.length === 9) other = must(await db.from('lh_candidates').select('id').eq('phone_norm', ph).limit(2), 'dup phone').find(x => x.id !== id);
+      if (em) other = must(await db.from('lh_candidates').select('id').eq('recruiter_id', cand.recruiter_id).eq('email_norm', em).limit(2), 'dup email').find(x => x.id !== id);
+      if (!other && ph.length === 9) other = must(await db.from('lh_candidates').select('id').eq('recruiter_id', cand.recruiter_id).eq('phone_norm', ph).limit(2), 'dup phone').find(x => x.id !== id);
       if (other) dup_of = other.id;
     }
 

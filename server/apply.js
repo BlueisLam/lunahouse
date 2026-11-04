@@ -2,6 +2,7 @@
 const { sb, must, BUCKET } = require('./_lib/db');
 const U = require('./_lib/util');
 const N = require('./_lib/notify');
+const T = require('./_lib/tenant');
 
 const MAX_CV_BYTES = 4 * 1024 * 1024;     // 4MB
 const MAX_PER_IP_HOUR = 5;
@@ -61,16 +62,22 @@ exports.handler = U.wrap(async (event) => {
   if ((recent.count || 0) >= MAX_PER_IP_HOUR) throw new U.HttpError(429, 'Bạn gửi hơi nhiều trong thời gian ngắn. Thử lại sau một giờ nhé.');
 
   // Job (nếu chọn)
-  let job = null;
+  let job = null, rec = null;
   if (body.job_slug) {
-    job = must(await db.from('lh_jobs').select('id,title,slug,status').eq('slug', U.clean(body.job_slug, 80)).maybeSingle(), 'job');
-    if (!job || job.status !== 'open') throw new U.HttpError(404, 'Vị trí này không còn nhận hồ sơ.');
+    job = must(await db.from('lh_jobs').select('id,title,slug,status,recruiter_id').eq('slug', U.clean(body.job_slug, 80)).maybeSingle(), 'job');
+    rec = job && await T.byId(job.recruiter_id);
+    if (!job || job.status !== 'open' || !rec || rec.status !== 'active') throw new U.HttpError(404, 'Vị trí này không còn nhận hồ sơ.');
+  } else {
+    // Gửi vào kho tài năng của một recruiter (không chọn job): theo handle, mặc định là trang chủ.
+    rec = await T.publicByHandle(U.clean(body.handle, 40));
+    if (!rec) throw new U.HttpError(404, 'Không tìm thấy trang nhận hồ sơ này.');
   }
+  const rid = rec.id;
 
   // Tìm ứng viên đã có theo email hoặc 9 số cuối điện thoại
   const emailNorm = f.email, phoneNorm = U.phoneNorm(f.phone_number);
-  let cand = must(await db.from('lh_candidates').select('*').eq('email_norm', emailNorm).limit(1), 'find by email')[0];
-  if (!cand && phoneNorm.length === 9) cand = must(await db.from('lh_candidates').select('*').eq('phone_norm', phoneNorm).limit(1), 'find by phone')[0];
+  let cand = must(await db.from('lh_candidates').select('*').eq('recruiter_id', rid).eq('email_norm', emailNorm).limit(1), 'find by email')[0];
+  if (!cand && phoneNorm.length === 9) cand = must(await db.from('lh_candidates').select('*').eq('recruiter_id', rid).eq('phone_norm', phoneNorm).limit(1), 'find by phone')[0];
 
   // Đã nộp đúng job này rồi → gửi lại mã qua email, không tạo trùng.
   // Ngoại lệ: ứng viên đã RÚT hồ sơ thì cho nộp lại (mở lại đúng hồ sơ cũ, giữ nguyên mã và lịch sử).
@@ -81,7 +88,7 @@ exports.handler = U.wrap(async (event) => {
     const dup = must(await dupQ.limit(1), 'dup app')[0];
     if (dup && dup.status === 'withdrawn') reapply = dup;
     else if (dup) {
-      await N.settle([N.emailReceipt({ app: dup, cand, job }), N.notifyNewApplication({ app: dup, cand, job, duplicate: true })]);
+      await N.settle([N.emailReceipt({ app: dup, cand, job, rec }), N.notifyNewApplication({ app: dup, cand, job, duplicate: true, rec })]);
       return U.json(200, { ok: true, duplicate: true, message: 'Bạn đã nộp vị trí này rồi. Mình vừa gửi lại mã hồ sơ vào email của bạn.' });
     }
   }
@@ -98,7 +105,7 @@ exports.handler = U.wrap(async (event) => {
   if (cand) {
     cand = must(await db.from('lh_candidates').update(contact).eq('id', cand.id).select().single(), 'update candidate');
   } else {
-    cand = must(await db.from('lh_candidates').insert({ ...contact, source: 'apply' }).select().single(), 'insert candidate');
+    cand = must(await db.from('lh_candidates').insert({ ...contact, source: 'apply', recruiter_id: rid }).select().single(), 'insert candidate');
   }
 
   // Lưu CV vào bucket private
@@ -113,8 +120,8 @@ exports.handler = U.wrap(async (event) => {
   // Nộp lại sau khi rút: mở lại hồ sơ cũ thay vì tạo mới
   if (reapply) {
     const app = must(await db.from('lh_applications').update({ status: 'new', cover_note: f.cover_note, public_note: '', ip_hash: ipHash }).eq('id', reapply.id).select().single(), 'reapply');
-    must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp lại sau khi rút hồ sơ (đã cập nhật CV)', meta: { from: 'withdrawn', to: 'new' } }), 'activity');
-    await N.settle([N.notifyNewApplication({ app, cand, job, reapply: true }), N.emailReceipt({ app, cand, job })]);
+    must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp lại sau khi rút hồ sơ (đã cập nhật CV)', meta: { from: 'withdrawn', to: 'new' }, recruiter_id: rid }), 'activity');
+    await N.settle([N.notifyNewApplication({ app, cand, job, reapply: true, rec }), N.emailReceipt({ app, cand, job, rec })]);
     return U.json(200, { ok: true, code: app.code, job_title: job ? job.title : null, email: cand.email, reapplied: true });
   }
 
@@ -122,19 +129,19 @@ exports.handler = U.wrap(async (event) => {
   let app = null;
   for (let i = 0; i < 6 && !app; i++) {
     const r = await db.from('lh_applications').insert({
-      code: U.genCode(), job_id: job ? job.id : null, candidate_id: cand.id, status: 'new',
+      code: U.genCode(), job_id: job ? job.id : null, candidate_id: cand.id, status: 'new', recruiter_id: rid,
       cover_note: f.cover_note, ip_hash: ipHash,
     }).select().single();
     if (!r.error) app = r.data;
     else if (!(r.error.code === '23505' && /code/.test((r.error.message || '') + (r.error.details || '')))) must(r, 'insert application');
   }
   if (!app) throw new Error('Không tạo được mã hồ sơ.');
-  must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp hồ sơ', meta: { from: '', to: 'new' } }), 'activity');
+  must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp hồ sơ', meta: { from: '', to: 'new' }, recruiter_id: rid }), 'activity');
 
   // Thông báo. CV được AI đọc sau, khi admin mở trang (parse_status = pending).
   await N.settle([
-    N.notifyNewApplication({ app, cand, job }),
-    N.emailReceipt({ app, cand, job }),
+    N.notifyNewApplication({ app, cand, job, rec }),
+    N.emailReceipt({ app, cand, job, rec }),
   ]);
 
   return U.json(200, { ok: true, code: app.code, job_title: job ? job.title : null, email: cand.email });
