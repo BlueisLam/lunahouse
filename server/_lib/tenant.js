@@ -33,9 +33,9 @@ const publicProfile = (r) => r && ({
   pro: PLAN.isPro(r), logo_url: PLAN.isPro(r) ? r.logo_url || '' : '', cover_url: PLAN.isPro(r) ? r.cover_url || '' : '',
 });
 
-async function byId(id) { return id ? must(await sb().from('lh_recruiters').select('*').eq('id', id).maybeSingle(), 'recruiter') : null; }
-async function byEmail(email) { return must(await sb().from('lh_recruiters').select('*').eq('email_norm', String(email).trim().toLowerCase()).maybeSingle(), 'recruiter'); }
-async function byHandle(handle) { return must(await sb().from('lh_recruiters').select('*').eq('handle', String(handle || '').toLowerCase()).maybeSingle(), 'recruiter'); }
+async function byId(id) { await PLAN.load(); return id ? must(await sb().from('lh_recruiters').select('*').eq('id', id).maybeSingle(), 'recruiter') : null; }
+async function byEmail(email) { await PLAN.load(); return must(await sb().from('lh_recruiters').select('*').eq('email_norm', String(email).trim().toLowerCase()).maybeSingle(), 'recruiter'); }
+async function byHandle(handle) { await PLAN.load(); return must(await sb().from('lh_recruiters').select('*').eq('handle', String(handle || '').toLowerCase()).maybeSingle(), 'recruiter'); }
 
 /** Gán dữ liệu cũ (chưa có chủ) cho recruiter này. */
 async function claimLegacy(id) {

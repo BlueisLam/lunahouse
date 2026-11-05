@@ -242,7 +242,7 @@
     }).join('') + '</div>';
   }
   function planBox() {
-    var p = S.plan; if (!p) return '';
+    var p = S.plan; if (!p || !p.billing) return '';
     var u = p.usage, L = p.limits, bar = function (n, max, label) { return '<div class="use"><span>' + label + '</span><b class="num">' + n + (p.pro ? '' : ' / ' + max) + '</b></div>'; };
     var until = p.plan_until ? new Date(p.plan_until).toLocaleDateString('vi-VN') : '';
     var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">đến ' + esc(until) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
@@ -273,7 +273,7 @@
       '<div class="setrow two">' + f('p-cemail', 'Email liên hệ công khai', m.contact_email, 'type="email"', 'Hiện ở chân trang và dùng làm địa chỉ trả lời email cho ứng viên.') + f('p-zalo', 'Link Zalo', m.zalo, 'placeholder="https://zalo.me/..."') + '</div>' +
       '<div class="setrow two">' + f('p-fb', 'Link Facebook', m.facebook, 'placeholder="https://facebook.com/..."') + f('p-in', 'Link LinkedIn', m.linkedin, 'placeholder="https://linkedin.com/in/..."') + '</div>' +
       '<div class="setrow">' + f('p-tg', 'Link Telegram', m.telegram, 'placeholder="https://t.me/..."') + '</div>' +
-      '<div class="setrow two">' + f('p-logo', 'Logo trang riêng (link ảnh https) · Pro', m.logo_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + f('p-cover', 'Ảnh bìa (link ảnh https) · Pro', m.cover_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + '</div>' +
+      '<div class="setrow two">' + f('p-logo', 'Logo trang riêng (link ảnh https)' + (S.plan && S.plan.billing ? ' · Pro' : ''), m.logo_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + f('p-cover', 'Ảnh bìa (link ảnh https)' + (S.plan && S.plan.billing ? ' · Pro' : ''), m.cover_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + '</div>' +
       '<div class="setrow"><div class="field"><label for="p-comm">Cộng đồng bạn quản lý hoặc giới thiệu</label><textarea class="i2" id="p-comm" rows="5" placeholder="facebook | Tên nhóm | Nhóm Facebook | https://facebook.com/groups/...">' + esc(commText(m.communities)) + '</textarea><div class="help">Mỗi dòng một nhóm: loại (facebook, linkedin, zalo) | tên | ghi chú | link https.</div></div></div>' +
       '<h2>Thông báo hồ sơ mới</h2>' +
       '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', 'Chỉ có ở gói Pro. Nhắn bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
@@ -294,13 +294,17 @@
   var RST = { pending: ['Chờ duyệt', 'warn'], active: ['Đang hoạt động', 'ok'], suspended: ['Đã khoá', 'err'] };
   VIEWS.recruiters = function () {
     if (!S.me || S.me.role !== 'admin') { $('#view').innerHTML = '<div class="none">Bạn không có quyền xem mục này.</div>'; return; }
-    $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
-    api('recruiters.list').then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
+    $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div id="billbox"></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
+    api('recruiters.list').then(function (r) { S.recs = r.recruiters; S.billing = !!r.billing; paintRecs(); }).catch(fail);
   };
   function isProRec(r) { return r.plan_until && new Date(r.plan_until).getTime() > Date.now(); }
   function planTag(r) { return isProRec(r) ? ' <span class="badge ok">Pro đến ' + esc(new Date(r.plan_until).toLocaleDateString('vi-VN')) + '</span>' : ' <span class="badge">Free</span>'; }
   function paintRecs() {
     var box = $('#reclist'); if (!box || S.tab !== 'recruiters') return;
+    var bb = $('#billbox');
+    if (bb) bb.innerHTML = '<div class="box billsw"><div><b>Tính phí gói Free / Pro: ' + (S.billing ? '<span class="badge warn">ĐANG BẬT</span>' : '<span class="badge ok">ĐANG TẮT</span>') + '</b>' +
+      '<div class="muted">' + (S.billing ? 'Người dùng Free bị giới hạn job, ứng viên, lượt AI và thấy giá nâng cấp Pro.' : 'Mọi recruiter dùng đủ tính năng, không giới hạn và không thấy chữ Pro hay giá. Hợp để mở web miễn phí giai đoạn đầu.') + '</div></div>' +
+      '<button class="b ' + (S.billing ? '' : 'pri') + '" type="button" data-act="bill-toggle">' + (S.billing ? 'Tắt tính phí' : 'Bật tính phí') + '</button></div>';
     var order = { pending: 0, active: 1, suspended: 2 };
     var list = S.recs.slice().sort(function (a, b) { return order[a.status] - order[b.status]; });
     box.innerHTML = list.map(function (r) {
@@ -849,6 +853,11 @@
       case 'pay-plan': { var im = $('#payimg'); if (im && S.plan && S.plan.pay) im.src = payUrl(S.plan, t.getAttribute('data-v')); $$('[data-act="pay-plan"]').forEach(function (x) { x.classList.toggle('on', x === t); }); return; }
       case 'copy-url': return copy(t.getAttribute('data-v'), t);
       case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
+      case 'bill-toggle': {
+        var turnOn = !S.billing;
+        if (!confirm(turnOn ? 'Bật tính phí? Người dùng Free sẽ bị giới hạn và thấy giá nâng cấp Pro.' : 'Tắt tính phí? Mọi người dùng đủ tính năng, không giới hạn.')) return;
+        return api('billing.set', { on: turnOn }).then(function (r) { S.billing = !!r.billing; toast(S.billing ? 'Đã bật tính phí' : 'Đã tắt tính phí'); paintRecs(); return api('bootstrap').then(function (d) { S.plan = d.plan; S.me = d.me; }).catch(function () {}); }).catch(fail);
+      }
       case 'rec-plan': {
         var mo = Number(t.getAttribute('data-m'));
         if (mo === 0 && !confirm('Đưa tài khoản này về gói Free ngay?')) return;

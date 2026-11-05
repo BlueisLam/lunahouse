@@ -437,13 +437,18 @@ A['profile.save'] = async (b) => {
   return { me: T.selfView(row) };
 };
 
+A['billing.set'] = async (b) => {
+  needAdmin(b);
+  return { billing: await PLAN.setBilling(b.on === true) };
+};
+
 A['recruiters.list'] = async (b) => {
   needAdmin(b);
   const db = sb();
   const rows = must(await db.from('lh_recruiters').select('id,email,handle,display_name,role,status,plan_until,created_at,last_login_at').order('created_at', { ascending: false }).limit(300), 'recruiters');
   const count = async (t, id) => (await db.from(t).select('id', { count: 'exact', head: true }).eq('recruiter_id', id)).count || 0;
   const out = await Promise.all(rows.map(async r => ({ ...r, jobs: await count('lh_jobs', r.id), candidates: await count('lh_candidates', r.id), apps: await count('lh_applications', r.id) })));
-  return { recruiters: out };
+  return { recruiters: out, billing: await PLAN.load(true) };
 };
 
 A['recruiters.update'] = async (b) => {

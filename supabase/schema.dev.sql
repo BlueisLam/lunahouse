@@ -215,3 +215,11 @@ create index if not exists lhdev_cand_rec  on lhdev_candidates (recruiter_id, cr
 create index if not exists lhdev_app_rec   on lhdev_applications (recruiter_id, updated_at desc);
 create index if not exists lhdev_act_rec   on lhdev_activities (recruiter_id, created_at);
 create index if not exists lhdev_thr_rec   on lhdev_threads (recruiter_id, updated_at desc);
+
+-- Cài đặt chung (công tắc tính phí gói Free/Pro...). Chỉ service key đọc ghi.
+create table if not exists lhdev_settings (
+  key        text primary key,
+  value      jsonb not null default '{}'::jsonb,
+  updated_at timestamptz default now()
+);
+alter table lhdev_settings enable row level security;

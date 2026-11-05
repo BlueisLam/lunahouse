@@ -287,3 +287,6 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 .payside dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
 .payside dt { color: var(--muted); }
 .payside dd { margin: 0; }
+
+.billsw { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 14px; }
+.billsw .muted { margin-top: 4px; max-width: 560px; }

@@ -193,8 +193,7 @@ function emailRecruiterApproved(rec, base) {
   const b = base || site();
   const inner = `<p style="margin:0 0 10px;font-size:18px;font-weight:700">Tài khoản của bạn đã được duyệt</p>
 <p style="margin:0 0 6px">Chào ${esc(rec.display_name)}, bạn có thể đăng nhập, đăng job và nhận hồ sơ ngay bây giờ.</p>
-<p style="margin:0 0 6px">Mình tặng bạn <b>1 tháng gói Pro</b> để dùng thử đầy đủ tính năng.</p>
-<p style="margin:0 0 14px">Trang công khai của bạn: <b>${esc(b.replace(/^https?:\/\//, ''))}/${esc(rec.handle)}</b></p>
+${require('./plan').billingOn() ? '<p style="margin:0 0 6px">Mình tặng bạn <b>1 tháng gói Pro</b> để dùng thử đầy đủ tính năng.</p>\n' : ''}<p style="margin:0 0 14px">Trang công khai của bạn: <b>${esc(b.replace(/^https?:\/\//, ''))}/${esc(rec.handle)}</b></p>
 <p style="margin:0">${btn(b + '/admin/', 'Đăng nhập')}</p>`;
   return email({ to: rec.email, subject: 'Tài khoản Luna của bạn đã được duyệt', html: shell(inner) });
 }

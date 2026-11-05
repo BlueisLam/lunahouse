@@ -867,6 +867,22 @@ const PLAN = require('../server/_lib/plan');
 const recOf = (id) => H.fake.t.lh_recruiters.find(r => r.id === id);
 const setFree = (id) => { recOf(id).plan_until = null; };
 
+test('công tắc tính phí: mặc định TẮT (ai cũng như Pro, không có giá); chỉ admin bật được; bật rồi Free mới bị giới hạn', async () => {
+  const bt = () => H.fake.t.lh_settings.find(x => x.key === 'billing');
+  assert.strictEqual(bt(), undefined, 'chưa bật bao giờ');
+  await PLAN.load(true);
+  const u = H.fake.t.lh_recruiters.find(r => r.role === 'recruiter');
+  assert.strictEqual(PLAN.isPro({ role: 'recruiter', plan_until: null }), true, 'tắt tính phí → mọi người như Pro');
+  const lst = await admin('recruiters.list'); assert.strictEqual(lst.billing, false);
+  assert.strictEqual((await admin('bootstrap')).plan.billing, false);
+  // người không phải admin không bật được
+  await assert.rejects(() => as(ckB)('billing.set', { on: true }), e => e.status === 403);
+  assert.strictEqual(bt(), undefined, 'bị từ chối thì không ghi gì');
+  assert.strictEqual((await admin('billing.set', { on: true })).billing, true);
+  assert.deepStrictEqual(bt().value, { on: true });
+  assert.strictEqual(PLAN.isPro({ role: 'recruiter', plan_until: null }), false, 'bật → Free bị giới hạn');
+  assert.strictEqual((await admin('bootstrap')).plan.billing, true);
+});
 test('gói: duyệt lần đầu tặng 30 ngày Pro, email báo tặng; admin tổng luôn là Pro', async () => {
   const c = await auth({ action: 'register', email: 'chi@example.com', password: 'matkhau-dai', display_name: 'Chi', handle: 'chi-hr' }, ip(70));
   assert.strictEqual(c.status, 200);
@@ -971,6 +987,16 @@ test('gói Free: tối đa 100 ứng viên (thêm tay và nộp qua trang đều
   H.fake.t.lh_candidates = H.fake.t.lh_candidates.filter(c => !String(c.id).startsWith('fill-'));
 });
 
+test('công tắc tính phí: tắt lại thì Free hết giới hạn, trang công khai không còn "Powered by Luna"', async () => {
+  setFree(recB.id);
+  assert.strictEqual((await admin('billing.set', { on: false })).billing, false);
+  const bb = as(ckB);
+  for (let i = 0; i < 5; i++) await bb('jobs.save', { title: 'Job tắt phí ' + i, status: 'open', summary: 'x'.repeat(30) }).catch(() => {});
+  assert.ok(H.fake.t.lh_jobs.filter(j => j.recruiter_id === recB.id && j.status === 'open').length > 3, 'tắt phí → mở quá 3 job được');
+  assert.strictEqual(PLAN.isPro(recOf(recB.id)), true);
+  await admin('billing.set', { on: true });
+  assert.strictEqual(PLAN.isPro(recOf(recB.id)), false);
+});
 test('thanh toán QR: chỉ có thông tin nhận tiền khi đã cấu hình PAY_BANK/PAY_ACCOUNT', async () => {
   assert.strictEqual((await as(ckB)('bootstrap')).plan.pay, null);
   Object.assign(process.env, { PAY_BANK: 'VCB', PAY_ACCOUNT: '0001112223', PAY_NAME: 'NGUYEN VAN A' });

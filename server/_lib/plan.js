@@ -10,7 +10,33 @@ const LIMITS = { jobs: 3, candidates: 100, ai_month: 30 };
 const PRICE = { month: 99000, month_list: 199000, year: 990000 }; // đ
 const TRIAL_DAYS = 30;
 
-const isPro = (rec) => !!rec && (rec.role === 'admin' || (!!rec.plan_until && new Date(rec.plan_until).getTime() > Date.now()));
+/**
+ * Công tắc tính phí (admin bật/tắt ở tab Recruiter). TẮT (mặc định) = mọi người dùng đủ tính năng, không giới hạn, không thấy giá.
+ * Lưu ở bảng lh_settings (key 'billing'); chưa có bảng hoặc lỗi đọc thì coi như TẮT. Nhớ trong bộ nhớ vài giây.
+ */
+const BILLING_TTL = 15e3;
+const billing = { on: false, at: 0 };
+async function load(force) {
+  if (!force && Date.now() - billing.at < BILLING_TTL) return billing.on;
+  try {
+    const r = await sb().from('lh_settings').select('value').eq('key', 'billing').maybeSingle();
+    billing.on = !r.error && !!(r.data && r.data.value && r.data.value.on === true);
+  } catch (e) { billing.on = false; }
+  billing.at = Date.now();
+  return billing.on;
+}
+async function setBilling(on) {
+  const db = sb(), value = { on: !!on };
+  const cur = await db.from('lh_settings').select('key').eq('key', 'billing').maybeSingle();
+  if (cur.error) throw new HttpError(500, 'Chưa có bảng lh_settings. Hãy chạy file SQL mới trong Supabase rồi thử lại.');
+  const w = cur.data ? await db.from('lh_settings').update({ value }).eq('key', 'billing') : await db.from('lh_settings').insert({ key: 'billing', value });
+  if (w.error) throw new HttpError(500, 'Không lưu được cài đặt: ' + w.error.message);
+  billing.on = !!on; billing.at = Date.now();
+  return billing.on;
+}
+const billingOn = () => billing.on;
+
+const isPro = (rec) => !!rec && (!billing.on || rec.role === 'admin' || (!!rec.plan_until && new Date(rec.plan_until).getTime() > Date.now()));
 const monthKey = () => new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 7);
 const aiUsed = (rec) => (rec.ai_month === monthKey() ? Number(rec.ai_count) || 0 : 0);
 
@@ -48,7 +74,7 @@ async function useAi(rec) {
 async function summary(rec, rid) {
   const pro = isPro(rec);
   return {
-    pro, role_admin: rec.role === 'admin', plan_until: rec.plan_until || null, limits: LIMITS, price: PRICE,
+    billing: billing.on, pro, role_admin: rec.role === 'admin', plan_until: rec.plan_until || null, limits: LIMITS, price: PRICE,
     payment_info: process.env.PAYMENT_INFO || '',
     // Thông tin nhận tiền để dựng mã VietQR: PAY_BANK (mã ngân hàng, vd VCB), PAY_ACCOUNT, PAY_NAME
     pay: process.env.PAY_BANK && process.env.PAY_ACCOUNT ? { bank: process.env.PAY_BANK, account: process.env.PAY_ACCOUNT, name: process.env.PAY_NAME || '' } : null,
@@ -56,4 +82,4 @@ async function summary(rec, rid) {
   };
 }
 
-module.exports = { LIMITS, PRICE, TRIAL_DAYS, isPro, needPro, upgrade, checkOpenJob, candidateRoom, checkCandidates, useAi, summary, monthKey };
+module.exports = { load, setBilling, billingOn, LIMITS, PRICE, TRIAL_DAYS, isPro, needPro, upgrade, checkOpenJob, candidateRoom, checkCandidates, useAi, summary, monthKey };
