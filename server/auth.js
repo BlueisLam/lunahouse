@@ -79,7 +79,9 @@ async function login(event, b) {
 
   if (email === T.ownerEmail()) {
     if (!A.checkPassword(pw)) return fail(true);
-    return finishLogin(event, await T.ensureOwner());
+    const owner = await T.ensureOwner();
+    await T.claimLegacy(owner.id); // dữ liệu tạo bởi bản cũ trong lúc chạy song song (chưa có chủ) về tay chủ
+    return finishLogin(event, owner);
   }
   const rec = await T.byEmail(email);
   if (!rec || !rec.auth_id) return fail(false);
