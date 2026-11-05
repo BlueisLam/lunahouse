@@ -77,10 +77,8 @@
       [ext(LH.zalo, 'Zalo'), ext(LH.facebook, 'Facebook'), ext(LH.linkedin, 'LinkedIn')].forEach(function (x) { if (x) contact.push(x); });
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
-      foot.innerHTML = '<div class="wrap"><div class="reg-cta"><div class="reg-t"><b>Bạn cũng là recruiter?</b><span>Tạo trang tuyển dụng riêng, nhận CV và theo dõi ứng viên ở một chỗ.</span></div>' +
-        '<a class="reg-b" href="/admin/#/register">Đăng ký recruiter <span aria-hidden="true">→</span></a></div></div>' +
-        '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
-        contact.join('') + '<span class="sp">' + (LH.pro === false ? '<a href="/">Powered by Luna</a> · ' : '') + '<a href="/admin/#/register">Đăng ký recruiter</a> · <a href="/admin/">Đăng nhập</a> · <a href="/privacy.html">Quyền riêng tư</a></span></div>';
+      foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
+        contact.join('') + '<span class="sp">' + (LH.pro === false ? '<a href="/">Powered by Luna</a> · ' : '') + '<a class="reg-link" href="/admin/#/register">Đăng ký recruiter</a> · <a href="/admin/">Đăng nhập</a> · <a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
 
