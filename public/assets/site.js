@@ -170,7 +170,7 @@
         (nice.length ? '<section><h2>' + t('Là điểm cộng', 'Nice to have') + '</h2><div class="chips">' + chips(nice, 'nice') + '</div></section>' : '') +
         (bullets(j.benefits).length ? '<section><h2>' + t('Quyền lợi', 'Benefits') + '</h2>' + list(j.benefits) + '</section>' : '') +
         '<section><h2>' + t('Cách làm việc và quy trình', 'How we work and the process') + '</h2><ul><li>' + t('Giờ làm việc 9:00–18:00, thứ Hai đến thứ Sáu.', 'Working hours 9:00–18:00, Monday to Friday.') + '</li>' +
-        '<li>' + t('Phỏng vấn 2 vòng, online hoặc offline tuỳ vị trí.', 'Two interview rounds, online or offline depending on the role.') + '</li><li>' + t('Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.', 'You can check your application status anytime with your application code.') + '</li></ul></section></div>' +
+        '<li>' + t('Phỏng vấn online hoặc offline tuỳ vị trí.', 'Interviews online or offline depending on the role.') + '</li><li>' + t('Bạn tra cứu tiến độ hồ sơ bất cứ lúc nào bằng mã hồ sơ.', 'You can check your application status anytime with your application code.') + '</li></ul></section></div>' +
         '<aside class="side"><div class="facts"><dl>' +
         ((j.must_have_tech || []).length ? '<div><dt>' + t('Công nghệ chính', 'Main tech') + '</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
         ((j.domains || []).length ? '<div><dt>' + t('Lĩnh vực', 'Domain') + '</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
