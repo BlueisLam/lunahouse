@@ -78,7 +78,7 @@
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
       foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
-        contact.join('') + '<span class="sp"><a href="/privacy.html">Quyền riêng tư</a></span></div>';
+        contact.join('') + '<span class="sp"><a href="/admin/#/register">Đăng ký recruiter</a> · <a href="/admin/">Đăng nhập</a> · <a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
 

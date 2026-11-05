@@ -913,6 +913,7 @@
     fetch('/api/auth').then(function (r) { return r.json(); }).then(function (j) { AUTH = j || AUTH; }).catch(function () {}).then(function () {
       var rm = /^#\/reset\/([A-Za-z0-9_-]+)/.exec(location.hash);
       if (rm) return showLogin('reset', rm[1]);
+      if (location.hash === '#/register') { history.replaceState(null, '', '/admin/'); return fetch('/api/admin', { method: 'POST', headers: { 'content-type': 'application/json', 'x-lh': '1' }, body: '{"action":"bootstrap"}' }).then(function (r) { if (r.ok) return boot(); showLogin('register'); }); }
       if (googleReturn()) return;
       boot();
     });
