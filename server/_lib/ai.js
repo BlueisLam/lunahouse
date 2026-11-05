@@ -9,7 +9,7 @@ const MODEL_VISION = () => process.env.GROQ_VISION_MODEL || '';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const providerOrder = () => String(process.env.AI_PROVIDERS || 'gemini,groq').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
-const hasKey = p => !!(p === 'gemini' ? process.env.GEMINI_API_KEY : p === 'groq' ? process.env.GROQ_API_KEY : '');
+const hasKey = p => !!(p === 'gemini' ? geminiKeys().length : p === 'groq' ? process.env.GROQ_API_KEY : '');
 const activeProviders = () => providerOrder().filter((p, i, a) => a.indexOf(p) === i && hasKey(p));
 /** Có nhà cung cấp nào đọc được ảnh không (Gemini luôn đọc được; Groq cần GROQ_VISION_MODEL). */
 const canSeeImages = () => activeProviders().some(p => p === 'gemini' || (p === 'groq' && !!MODEL_VISION()));
@@ -38,34 +38,117 @@ async function callGroq({ text, images, max_tokens, model, timeoutMs }) {
 const geminiModels = () => [process.env.GEMINI_MODEL, 'gemini-3.8-flash', 'gemini-flash-latest'].filter((m, i, a) => m && a.indexOf(m) === i);
 const deadGemini = new Set(); // model đã bị Google từ chối (404) thì khỏi thử lại trong cùng instance
 
+/**
+ * Nhiều key Gemini để chia tải và dự phòng. Đặt bằng bất kỳ cách nào (gộp lại, bỏ trùng):
+ *   GEMINI_API_KEY, GEMINI_API_KEY_2 … GEMINI_API_KEY_20, hoặc GEMINI_API_KEYS="key1,key2,key3".
+ */
+function geminiKeys() {
+  const raw = [process.env.GEMINI_API_KEY].concat(String(process.env.GEMINI_API_KEYS || '').split(/[\s,;]+/));
+  for (let i = 1; i <= 20; i++) raw.push(process.env['GEMINI_API_KEY_' + i]);
+  return raw.map(k => String(k || '').trim()).filter((k, i, a) => k.length >= 8 && a.indexOf(k) === i);
+}
+
+// Key nào đang "nghỉ" (hết hạn mức, bị từ chối) thì bỏ qua tới hết giờ. Trạng thái giữ trong bộ nhớ của instance.
+const keyState = new Map();
+let rr = 0;
+const coolKey = (k, ms, why) => keyState.set(k, { until: Date.now() + ms, why });
+const isCooling = k => { const st = keyState.get(k); return !!st && st.until > Date.now(); };
+const coolLeftSec = keys => { const ls = keys.map(k => ((keyState.get(k) || {}).until || 0) - Date.now()).filter(x => x > 0); return ls.length ? Math.ceil(Math.min(...ls) / 1000) : 0; };
+const delayDemand = n => (Number(process.env.AI_DEMAND_DELAY_MS) || 3000) * (n + 1);   // server quá tải: chờ 3s, 6s, 9s rồi gọi lại
+const delayServer = () => Number(process.env.AI_RETRY_DELAY_MS) || 2000;
+const retryDelaySec = t => { const m = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(t) || /retry in ([\d.]+)s/i.exec(t); return m ? Number(m[1]) : 0; };
+
+function nextKey(keys, tried) {
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[(rr + i) % keys.length];
+    if (!tried.has(k) && !isCooling(k)) { rr = (rr + i + 1) % keys.length; return k; }
+  }
+  return null;
+}
+
+/** Phân loại lỗi Gemini để quyết định: đổi key, chờ rồi gọi lại, đổi model, hay dừng. */
+function classify(status, raw) {
+  const t = String(raw || '').slice(0, 1500);
+  if (status === 429 || /RESOURCE_EXHAUSTED/.test(t)) {
+    if (/overload|high demand|try again later|temporarily/i.test(t) && !/quota|rate.?limit|per (minute|day)/i.test(t)) return { kind: 'demand' };
+    const daily = /per ?day|daily|PerDay|limit: ?0/i.test(t);
+    return { kind: 'limit', ms: daily ? 6 * 3600e3 : Math.min(Math.max(retryDelaySec(t) * 1000, 60000), 10 * 60e3) };
+  }
+  if (status === 503 || (status >= 500 && /UNAVAILABLE|overload|high demand/i.test(t))) return { kind: 'demand' };
+  if (status === 401 || status === 403 || (status === 400 && /API[_ ]KEY|expired/i.test(t))) return { kind: 'badkey' };   // key sai, bị khoá, hết hạn, sai vùng
+  if (status === 404 || (status === 400 && /model/i.test(t))) return { kind: 'model' };
+  if (status === 408 || status === 500 || status === 502 || status === 504) return { kind: 'server' };
+  return { kind: 'other' };
+}
+
 async function callGemini({ text, images, max_tokens, timeoutMs }) {
   const parts = [{ text }];
   for (const u of images || []) {
     const m = /^data:([^;]+);base64,(.+)$/.exec(u || '');
     if (m) parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
   }
+  const keys = geminiKeys();
+  const deadline = Date.now() + (Number(process.env.AI_BUDGET_MS) || 90000);   // tổng thời gian cho mọi lần thử
   const list = geminiModels().filter(m => !deadGemini.has(m));
   if (!list.length) deadGemini.clear(), list.push(...geminiModels());
   let lastErr;
   for (const mdl of list) {
     const gen = { maxOutputTokens: /2\.5-flash/.test(mdl) ? max_tokens : Math.min(max_tokens * 3, 16000), temperature: 0.2 };
     if (/2\.5-flash/.test(mdl)) gen.thinkingConfig = { thinkingBudget: 0 }; // đời 3.x có "suy nghĩ" ăn token đầu ra nên nới hạn mức
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent', {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
-      body: JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gen }), signal: AbortSignal.timeout(timeoutMs),
-    });
-    const raw = await r.text();
-    if (!r.ok) {
-      lastErr = Object.assign(new ProviderError(`Gemini API ${r.status} (${mdl}): ${raw.slice(0, 200)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
-      if (r.status === 404 || (r.status === 400 && /model/i.test(raw))) { deadGemini.add(mdl); continue; } // model không còn → thử model kế
-      throw lastErr;
+    const body = JSON.stringify({ contents: [{ role: 'user', parts }], generationConfig: gen });
+    const tried = new Set(), srv = new Map();
+    let demand = 0, modelDead = false;
+    for (;;) {
+      if (Date.now() > deadline) { lastErr = lastErr || new ProviderError('Gemini: hết thời gian cho các lần thử.', 408); break; }
+      const key = nextKey(keys, tried);
+      if (!key) break;
+      const tag = '#' + (keys.indexOf(key) + 1) + '/' + keys.length;
+      let r, raw;
+      try {
+        r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(mdl) + ':generateContent', {
+          method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body,
+          signal: AbortSignal.timeout(Math.max(8000, Math.min(timeoutMs, deadline - Date.now()))),
+        });
+        raw = await r.text();
+      } catch (e) {   // quá giờ, rớt mạng, DNS… → thử key khác
+        lastErr = new ProviderError(`Gemini key ${tag}: ${e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'quá thời gian chờ' : 'lỗi mạng'}`, 408);
+        console.warn('[ai]', lastErr.message); tried.add(key); continue;
+      }
+      if (r.ok) {
+        let c; try { c = (JSON.parse(raw).candidates || [])[0]; } catch { c = null; }
+        const out = c && c.content && (c.content.parts || []).map(p => p.text || '').join('');
+        if (!out) {
+          lastErr = new ProviderError('Gemini không trả nội dung (' + ((c && c.finishReason) || 'rỗng') + ').', 502);
+          if (c && c.finishReason && c.finishReason !== 'STOP') throw lastErr;   // bị chặn an toàn / quá dài: đổi key cũng vậy, nhường nhà kế tiếp
+          tried.add(key); continue;                                              // rỗng bất thường: thử key khác
+        }
+        return out;
+      }
+      lastErr = Object.assign(new ProviderError(`Gemini API ${r.status} (${mdl}, key ${tag}): ${raw.slice(0, 200)}`, r.status), { retryAfter: Number(r.headers && r.headers.get && r.headers.get('retry-after')) || 0 });
+      const c = classify(r.status, raw);
+      if (c.kind === 'model') { deadGemini.add(mdl); modelDead = true; break; }          // model không còn → model kế
+      if (c.kind === 'limit') { coolKey(key, c.ms, 'limit'); tried.add(key); console.warn('[ai] hết hạn mức, đổi key:', lastErr.message); continue; }
+      if (c.kind === 'badkey') { coolKey(key, 6 * 3600e3, 'bad'); tried.add(key); console.warn('[ai] key không dùng được, đổi key:', lastErr.message); continue; }
+      if (c.kind === 'demand') {                                                          // máy chủ Google quá tải: chờ vài giây rồi gọi lại
+        if (demand < 3) { await sleep(delayDemand(demand++)); continue; }
+        tried.add(key); continue;
+      }
+      if (c.kind === 'server') {                                                          // lỗi máy chủ thoáng qua: thử lại 1 lần rồi đổi key
+        const n = (srv.get(key) || 0) + 1; srv.set(key, n);
+        if (n <= 1) { await sleep(delayServer()); continue; }
+        tried.add(key); continue;
+      }
+      throw lastErr;                                                                      // lỗi khác (vd 400 yêu cầu sai): đổi key không giúp được
     }
-    const c = (JSON.parse(raw).candidates || [])[0];
-    const out = c && c.content && (c.content.parts || []).map(p => p.text || '').join('');
-    if (!out) throw new ProviderError('Gemini không trả nội dung (' + ((c && c.finishReason) || 'rỗng') + ').', 502);
-    return out;
+    if (!modelDead && lastErr) break;
   }
-  throw lastErr || new ProviderError('Gemini: không có model nào dùng được.', 404);
+  if (!lastErr) {   // mọi key đang nghỉ từ trước
+    lastErr = Object.assign(new ProviderError(`Gemini: cả ${keys.length} key đang hết hạn mức hoặc bị từ chối.`, 429), { retryAfter: coolLeftSec(keys) });
+  } else if (lastErr.status === 429 || /hết hạn mức/.test(lastErr.message)) {
+    lastErr.message = `Gemini: cả ${keys.length} key đều hết hạn mức. ` + lastErr.message;
+    lastErr.retryAfter = coolLeftSec(keys);
+  }
+  throw lastErr;
 }
 const CALL = { gemini: callGemini, groq: callGroq };
 
@@ -265,4 +348,4 @@ ${String(text).slice(0, 12000)}`;
   return extractJson(out);
 }
 
-module.exports = { llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION, canSeeImages, activeProviders };
+module.exports = { geminiKeys, _resetKeys: () => { keyState.clear(); rr = 0; deadGemini.clear(); }, llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION, canSeeImages, activeProviders };

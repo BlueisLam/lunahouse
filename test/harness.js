@@ -7,6 +7,7 @@ process.env.TELEGRAM_CHAT_ID = '999';
 process.env.RESEND_API_KEY = 're_fake';
 process.env.ADMIN_NOTIFY_EMAIL = 'admin@example.com';
 process.env.GROQ_API_KEY = "gsk_fake";
+process.env.AI_DEMAND_DELAY_MS = '1'; process.env.AI_RETRY_DELAY_MS = '1';
 process.env.ADMIN_EMAIL = 'owner@example.com';
 process.env.SUPABASE_URL = 'https://fake.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'service-fake';
@@ -102,6 +103,7 @@ global.fetch = async (url, opts = {}) => {
   if (url.includes('api.resend.com')) return resp(200, { id: 'email_1' });
   if (url.includes('generativelanguage.googleapis.com')) {
     if (state.geminiDeadModels && state.geminiDeadModels.some(m => url.includes('/models/' + m + ':'))) return resp(404, { error: { message: 'no longer available' } });
+    if (state.geminiScript) { const o = state.geminiScript(String((opts.headers || {})['x-goog-api-key'] || ''), body); if (o) return resp(o.status, o.body); }
     if (state.geminiStatus) return resp(state.geminiStatus, { error: { message: 'gemini down' } });
     const txt = body.contents[0].parts.map(p => p.text || '').join('\n');
     const t = claudeReply({ messages: [{ content: txt }] });

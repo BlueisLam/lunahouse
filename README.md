@@ -14,6 +14,7 @@ Stack: **Cloudflare Pages** (static + Pages Functions) · Supabase (Postgres + S
    - `ADMIN_EMAIL` (email tài khoản chủ), `ADMIN_PASSWORD` (≥ 16 ký tự, mật khẩu của tài khoản chủ), `SESSION_SECRET` (`openssl rand -hex 32`)
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
    - `RESEND_API_KEY`, `MAIL_FROM`, `ADMIN_NOTIFY_EMAIL`, `MAIL_REPLY_TO`
+   - **Nhiều key Gemini**: thêm `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`… (tới `_20`) hoặc gộp vào `GEMINI_API_KEYS` (cách nhau bằng dấu phẩy). Key nên lấy từ các dự án Google Cloud khác nhau vì hạn mức tính theo dự án. Key nào hết hạn mức (429) thì nghỉ rồi tự đổi sang key khác; key sai/bị khoá thì bị bỏ qua; server quá tải (503/overloaded) thì chờ vài giây (`AI_DEMAND_DELAY_MS`, mặc định 3000) rồi gọi lại; lỗi 5xx thoáng qua thử lại 1 lần (`AI_RETRY_DELAY_MS`); mạng/quá giờ thì đổi key. Hết sạch key mới sang Groq. Tổng thời gian tối đa mỗi lần gọi: `AI_BUDGET_MS` (mặc định 90000).
    - AI có dự phòng: `GEMINI_API_KEY` (+ `GEMINI_MODEL`, tuỳ chọn; mặc định tự thử `gemini-3.8-flash` rồi `gemini-flash-latest`, model nào Google khai tử thì tự bỏ qua) và/hoặc `GROQ_API_KEY`. Thứ tự thử đặt bằng `AI_PROVIDERS` (mặc định `gemini,groq`): nhà nào hết hạn mức hoặc lỗi thì tự chuyển sang nhà kế tiếp. Chỉ có một key thì chỉ dùng nhà đó.
    - `GROQ_API_KEY`, `GROQ_MODEL` (ví dụ `openai/gpt-oss-120b`; tên model Groq đổi thường xuyên, nếu báo lỗi model thì xem danh sách mới ở console.groq.com/docs/models)
    - Tuỳ chọn: `GROQ_MODEL_FAST`, `GROQ_VISION_MODEL` (đọc CV dạng ảnh)

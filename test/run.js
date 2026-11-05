@@ -492,6 +492,7 @@ test('AI dự phòng: Gemini trước, hết hạn mức thì sang Groq; cả ha
     H.state.geminiStatus = 429; H.calls.length = 0;
     assert.match(await ask(), /Senior Java Developer/);
     assert.deepStrictEqual(used(), ['gemini', 'groq']);               // hết hạn mức → sang Groq
+    AI._resetKeys();
     H.state.geminiStatus = 0; process.env.GEMINI_MODEL = 'gemini-2.5-flash'; H.state.geminiDeadModels = ['gemini-2.5-flash']; H.calls.length = 0;
     await ask();                                                      // model cũ bị khai tử → tự thử model kế, không sang Groq
     assert.deepStrictEqual(used(), ['gemini', 'gemini']);
@@ -977,6 +978,92 @@ test('thanh toán QR: chỉ có thông tin nhận tiền khi đã cấu hình PA
     const pay = (await as(ckB)('bootstrap')).plan.pay;
     assert.deepStrictEqual(pay, { bank: 'VCB', account: '0001112223', name: 'NGUYEN VAN A' });
   } finally { delete process.env.PAY_BANK; delete process.env.PAY_ACCOUNT; delete process.env.PAY_NAME; }
+});
+
+test('nhiều key Gemini: gộp từ nhiều biến, bỏ trùng; hết hạn mức thì đổi key, key nghỉ thì được bỏ qua', async () => {
+  const AI = require('../server/_lib/ai');
+  const ask = () => AI.llm({ text: 'Đọc đoạn mô tả công việc: x' });
+  const keysUsed = () => H.calls.filter(c => /generativelanguage/.test(c.url)).map(c => c.headers['x-goog-api-key']);
+  const set = { GEMINI_API_KEY: 'key-AAAAAAAA', GEMINI_API_KEY_2: 'key-BBBBBBBB', GEMINI_API_KEY_3: 'key-CCCCCCCC', GEMINI_API_KEYS: 'key-DDDDDDDD, key-AAAAAAAA\nkey-EEEEEEEE', GEMINI_API_KEY_9: '  ' };
+  Object.assign(process.env, set); AI._resetKeys(); process.env.AI_PROVIDERS = 'gemini,groq';
+  try {
+    assert.deepStrictEqual(AI.geminiKeys(), ['key-AAAAAAAA', 'key-DDDDDDDD', 'key-EEEEEEEE', 'key-BBBBBBBB', 'key-CCCCCCCC'].sort((a, b) => 0) && AI.geminiKeys());
+    assert.strictEqual(AI.geminiKeys().length, 5, 'gộp 5 key khác nhau, trùng và rỗng bị bỏ');
+    // chia tải: các lần gọi liên tiếp xoay vòng giữa các key
+    H.calls.length = 0; for (let i = 0; i < 5; i++) await ask();
+    assert.strictEqual(new Set(keysUsed()).size, 5, 'xoay vòng đủ 5 key');
+    // key đầu tiên được chọn hết hạn mức → đổi sang key kế, key đó nghỉ, lần sau không gọi lại
+    AI._resetKeys();
+    const bad = AI.geminiKeys()[0];
+    H.state.geminiScript = (k) => (k === bad ? { status: 429, body: { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded for metric: generate_content_free_tier_requests, limit: 15' } } } : null);
+    H.calls.length = 0; assert.match(await ask(), /Senior Java/);
+    assert.deepStrictEqual(keysUsed()[0], bad); assert.notStrictEqual(keysUsed()[1], bad); assert.ok(!H.calls.some(c => /groq/.test(c.url)), 'còn key khác thì không sang Groq');
+    H.calls.length = 0; for (let i = 0; i < 8; i++) await ask();
+    assert.ok(!keysUsed().includes(bad), 'key đang nghỉ không bị gọi lại');
+  } finally { H.state.geminiScript = null; for (const k of Object.keys(set)) delete process.env[k]; delete process.env.AI_PROVIDERS; AI._resetKeys(); }
+});
+test('nhiều key Gemini: key sai/bị khoá/hết hạn thì bỏ, lỗi mạng và quá giờ thì đổi key, lỗi yêu cầu sai thì dừng', async () => {
+  const AI = require('../server/_lib/ai');
+  const ask = () => AI.llm({ text: 'Đọc đoạn mô tả công việc: x' });
+  const keysUsed = () => H.calls.filter(c => /generativelanguage/.test(c.url)).map(c => c.headers['x-goog-api-key']);
+  Object.assign(process.env, { GEMINI_API_KEY: 'key-1111111', GEMINI_API_KEY_2: 'key-2222222', GEMINI_API_KEY_3: 'key-3333333' });
+  process.env.GROQ_API_KEY = '';
+  const only = (k, status, body) => { H.state.geminiScript = (key) => (key === k ? { status, body } : null); AI._resetKeys(); };
+  const first = () => { AI._resetKeys(); return AI.geminiKeys()[0]; };
+  try {
+    for (const [name, status, body] of [
+      ['key sai', 400, { error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } }],
+      ['key bị khoá', 403, { error: { code: 403, message: 'Your API key was reported as leaked. Please use another API key.', status: 'PERMISSION_DENIED' } }],
+      ['key bị thu hồi', 401, { error: { code: 401, message: 'API keys are not supported by this API.' } }],
+      ['key hết hạn', 400, { error: { code: 400, message: 'API key expired. Please renew the API key.' } }],
+      ['hết hạn mức ngày', 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota, limit: 0, per day' } }],
+      ['hết hạn mức phút (retryDelay)', 429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', details: [{ retryDelay: '34s' }], message: 'Quota exceeded: rate limit per minute' } }],
+    ]) {
+      const k = first(); only(k, status, body); H.calls.length = 0;
+      assert.match(await ask(), /Senior Java/, name);
+      assert.strictEqual(keysUsed()[0], k, name); assert.ok(keysUsed().length >= 2 && !keysUsed().slice(1).includes(k), name + ': đổi sang key khác');
+    }
+    // lỗi mạng và quá giờ: đổi key, không sập
+    const realFetch = global.fetch; let n = 0;
+    global.fetch = async (url, o) => { if (/generativelanguage/.test(String(url)) && n++ < 2) { H.calls.push({ url: String(url), body: null, headers: o.headers }); throw n === 1 ? new TypeError('fetch failed') : Object.assign(new Error('t'), { name: 'TimeoutError' }); } return realFetch(url, o); };
+    AI._resetKeys(); H.state.geminiScript = null; H.calls.length = 0;
+    try { assert.match(await ask(), /Senior Java/); } finally { global.fetch = realFetch; }
+    assert.strictEqual(new Set(keysUsed()).size, 3, 'mạng hỏng → thử key thứ 2, quá giờ → thử key thứ 3');
+    // lỗi yêu cầu sai (400 không liên quan key/model): dừng, không đốt hết key
+    H.state.geminiScript = () => ({ status: 400, body: { error: { code: 400, message: 'Request contains an invalid argument.' } } }); AI._resetKeys(); H.calls.length = 0;
+    await assert.rejects(() => ask(), /Gemini API 400/); assert.strictEqual(keysUsed().length, 1);
+    // cả 3 key hết hạn mức: báo rõ, nhanh, không chờ vô ích
+    H.state.geminiScript = () => ({ status: 429, body: { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded' } } }); AI._resetKeys(); H.calls.length = 0;
+    await assert.rejects(() => ask(), e => /cả 3 key/.test(e.message)); assert.strictEqual(keysUsed().length, 3);
+    H.calls.length = 0; await assert.rejects(() => ask(), /cả 3 key/); assert.strictEqual(keysUsed().length, 0, 'tất cả đang nghỉ → không gọi nữa');
+  } finally { H.state.geminiScript = null; for (const k of ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'GEMINI_API_KEY_3']) delete process.env[k]; process.env.GROQ_API_KEY = 'gsk_fake'; AI._resetKeys(); }
+});
+test('nhiều key Gemini: server quá tải (503/overloaded) thì chờ vài giây rồi gọi lại, không đổi key; lỗi 5xx thoáng qua thử lại; hết cách mới sang Groq', async () => {
+  const AI = require('../server/_lib/ai');
+  const ask = () => AI.llm({ text: 'Đọc đoạn mô tả công việc: x' });
+  const keysUsed = () => H.calls.filter(c => /generativelanguage/.test(c.url)).map(c => c.headers['x-goog-api-key']);
+  Object.assign(process.env, { GEMINI_API_KEY: 'key-1111111', GEMINI_API_KEY_2: 'key-2222222' });
+  try {
+    let n = 0; AI._resetKeys();
+    H.state.geminiScript = () => (n++ < 2 ? { status: 503, body: { error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded. Please try again later.' } } } : null);
+    H.calls.length = 0; const t0 = Date.now();
+    assert.match(await ask(), /Senior Java/); assert.strictEqual(keysUsed().length, 3, '2 lần quá tải rồi lần 3 thành công');
+    // 429 kiểu "overloaded" cũng là quá tải, không phải hết quota
+    n = 0; H.state.geminiScript = () => (n++ < 1 ? { status: 429, body: { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'The service is currently overloaded, high demand. Try again later.' } } } : null);
+    AI._resetKeys(); H.calls.length = 0; assert.match(await ask(), /Senior Java/); assert.strictEqual(keysUsed().length, 2);
+    assert.ok(!H.calls.some(c => /groq/.test(c.url)));
+    // lỗi 500 thoáng qua: thử lại một lần rồi mới đổi key
+    n = 0; H.state.geminiScript = () => (n++ < 1 ? { status: 500, body: { error: { code: 500, message: 'Internal error' } } } : null);
+    AI._resetKeys(); H.calls.length = 0; assert.match(await ask(), /Senior Java/); assert.strictEqual(keysUsed().length, 2);
+    // quá tải kéo dài: đã chờ và thử lại vài lần, cuối cùng sang Groq
+    H.state.geminiScript = () => ({ status: 503, body: { error: { code: 503, status: 'UNAVAILABLE', message: 'overloaded' } } });
+    AI._resetKeys(); H.calls.length = 0; assert.match(await ask(), /Senior Java/);
+    assert.ok(H.calls.some(c => /groq/.test(c.url)), 'Groq cứu khi Gemini quá tải dai dẳng');
+    assert.ok(keysUsed().length >= 4, 'đã thử lại nhiều lần trước khi bỏ');
+    // bị chặn an toàn (không phải lỗi key): không đốt key, nhường Groq
+    H.state.geminiScript = () => ({ status: 200, body: { candidates: [{ finishReason: 'SAFETY' }] } });
+    AI._resetKeys(); H.calls.length = 0; await ask(); assert.strictEqual(keysUsed().length, 1);
+  } finally { H.state.geminiScript = null; delete process.env.GEMINI_API_KEY; delete process.env.GEMINI_API_KEY_2; AI._resetKeys(); }
 });
 
 (async () => {
