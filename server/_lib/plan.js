@@ -7,7 +7,9 @@ const { sb } = require('./db');
 const { HttpError } = require('./util');
 
 const LIMITS = { jobs: 3, candidates: 100, ai_month: 30 };
-const PRICE = { month: 99000, month_list: 199000, year: 990000 }; // đ
+const PRICE = { month: 99000, month_list: 199000, lifetime: 999000, lifetime_list: 1995000 }; // đ
+const LIFETIME_UNTIL = '2099-12-31T00:00:00.000Z'; // gói vĩnh viễn = hạn Pro đặt tới năm 2099
+const isLifetime = (rec) => !!rec && !!rec.plan_until && new Date(rec.plan_until).getUTCFullYear() >= 2099;
 const TRIAL_DAYS = 30;
 
 /**
@@ -74,7 +76,7 @@ async function useAi(rec) {
 async function summary(rec, rid) {
   const pro = isPro(rec);
   return {
-    billing: billing.on, pro, role_admin: rec.role === 'admin', plan_until: rec.plan_until || null, limits: LIMITS, price: PRICE,
+    billing: billing.on, pro, lifetime: isLifetime(rec), role_admin: rec.role === 'admin', plan_until: rec.plan_until || null, limits: LIMITS, price: PRICE,
     payment_info: process.env.PAYMENT_INFO || '',
     // Thông tin nhận tiền để dựng mã VietQR: PAY_BANK (mã ngân hàng, vd VCB), PAY_ACCOUNT, PAY_NAME
     pay: process.env.PAY_BANK && process.env.PAY_ACCOUNT ? { bank: process.env.PAY_BANK, account: process.env.PAY_ACCOUNT, name: process.env.PAY_NAME || '' } : null,
@@ -82,4 +84,4 @@ async function summary(rec, rid) {
   };
 }
 
-module.exports = { load, setBilling, billingOn, LIMITS, PRICE, TRIAL_DAYS, isPro, needPro, upgrade, checkOpenJob, candidateRoom, checkCandidates, useAi, summary, monthKey };
+module.exports = { LIFETIME_UNTIL, isLifetime, load, setBilling, billingOn, LIMITS, PRICE, TRIAL_DAYS, isPro, needPro, upgrade, checkOpenJob, candidateRoom, checkCandidates, useAi, summary, monthKey };

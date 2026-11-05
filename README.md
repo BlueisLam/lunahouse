@@ -110,9 +110,9 @@ Ai cũng tự đăng ký tại `/admin/` → "Tạo tài khoản recruiter". Tà
 4. Mở trang chủ một lần hoặc đăng nhập bằng `ADMIN_EMAIL` + `ADMIN_PASSWORD` để dữ liệu cũ được gán cho tài khoản chủ.
 
 ## Gói Free / Pro
-Chỉnh giá và hạn mức trong `server/_lib/plan.js`. Thu tiền thủ công: recruiter chuyển khoản, admin bấm **+1 tháng / +1 năm Pro** trong tab Recruiter (cộng dồn vào hạn còn lại, **Về Free** để thu hồi). Ở Cài đặt của recruiter Free có **mã VietQR** điền sẵn số tiền (1 tháng / 1 năm) và nội dung `LUNA <handle>`: đặt `PAY_BANK` (mã ngân hàng, ví dụ `VCB`), `PAY_ACCOUNT`, `PAY_NAME` ở Cloudflare. Ghi chú thêm (xuống dòng được) đặt ở `PAYMENT_INFO`.
+Chỉnh giá và hạn mức trong `server/_lib/plan.js`. Thu tiền thủ công: recruiter chuyển khoản, admin bấm **+1 tháng / Pro vĩnh viễn** trong tab Recruiter (cộng dồn vào hạn còn lại, **Về Free** để thu hồi). Ở Cài đặt của recruiter Free có **mã VietQR** điền sẵn số tiền (1 tháng / 1 năm) và nội dung `LUNA <handle>`: đặt `PAY_BANK` (mã ngân hàng, ví dụ `VCB`), `PAY_ACCOUNT`, `PAY_NAME` ở Cloudflare. Ghi chú thêm (xuống dòng được) đặt ở `PAYMENT_INFO`.
 
-| | Free | Pro (99.000đ/tháng, giá gốc 199.000đ; 990.000đ/năm) |
+| | Free | Pro (99.000đ/tháng, giá gốc 199.000đ; gói vĩnh viễn 999.000đ, giá gốc 1.995.000đ) |
 |---|---|---|
 | Job đang mở / ứng viên | 3 / 100 | không giới hạn |
 | AI đọc CV | 30 lượt/tháng | không giới hạn |

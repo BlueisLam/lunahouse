@@ -504,8 +504,9 @@ A['recruiters.update'] = async (b) => {
     if (hit && hit.id !== t.id) throw new U.HttpError(409, 'Đường dẫn này đã có người dùng.');
     patch.handle = h;
   }
-  // Gói: plan_months > 0 cộng thêm tháng vào hạn Pro (tính từ hạn hiện tại nếu còn); 0 = về Free ngay.
-  if (b.plan_months !== undefined) {
+  // Gói: plan_months > 0 cộng thêm tháng vào hạn Pro (tính từ hạn hiện tại nếu còn); 0 = về Free ngay; plan_lifetime = Pro vĩnh viễn.
+  if (b.plan_lifetime === true) patch.plan_until = PLAN.LIFETIME_UNTIL; // gói vĩnh viễn
+  else if (b.plan_months !== undefined) {
     const m = Math.floor(Number(b.plan_months));
     if (!(m >= 0 && m <= 36)) throw new U.HttpError(400, 'Số tháng không hợp lệ.');
     if (m === 0) patch.plan_until = null;

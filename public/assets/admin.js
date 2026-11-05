@@ -213,14 +213,14 @@
   function vnd(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + 'đ'; }
   /** Mã VietQR đã điền sẵn số tiền và nội dung chuyển khoản (ngân hàng nào quét cũng được). */
   function payUrl(p, kind) {
-    var amount = kind === 'year' ? p.price.year : p.price.month, memo = 'LUNA ' + S.me.handle;
+    var amount = kind === 'lifetime' ? p.price.lifetime : p.price.month, memo = 'LUNA ' + S.me.handle;
     return 'https://img.vietqr.io/image/' + encodeURIComponent(p.pay.bank) + '-' + encodeURIComponent(p.pay.account) + '-compact2.png?amount=' + amount + '&addInfo=' + encodeURIComponent(memo) + '&accountName=' + encodeURIComponent(p.pay.name || '');
   }
   function payBox(p) {
     if (!p.pay) return '';
     var memo = 'LUNA ' + S.me.handle;
     return '<div class="payqr"><img id="payimg" src="' + esc(payUrl(p, 'month')) + '" alt="Mã QR chuyển khoản" width="220" height="220"><div class="payside">' +
-      '<div class="seg" role="group" aria-label="Chọn gói"><button type="button" class="on" data-act="pay-plan" data-v="month">1 tháng · ' + vnd(p.price.month) + '</button><button type="button" data-act="pay-plan" data-v="year">1 năm · ' + vnd(p.price.year) + '</button></div>' +
+      '<div class="seg" role="group" aria-label="Chọn gói"><button type="button" class="on" data-act="pay-plan" data-v="month">1 tháng · ' + vnd(p.price.month) + '</button><button type="button" data-act="pay-plan" data-v="lifetime">Vĩnh viễn · ' + vnd(p.price.lifetime) + '</button></div>' +
       '<dl><dt>Ngân hàng</dt><dd>' + esc(p.pay.bank) + '</dd><dt>Số tài khoản</dt><dd><b class="num">' + esc(p.pay.account) + '</b> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(p.pay.account) + '">Chép</button></dd>' +
       (p.pay.name ? '<dt>Chủ tài khoản</dt><dd>' + esc(p.pay.name) + '</dd>' : '') + '<dt>Nội dung</dt><dd><b class="num">' + esc(memo) + '</b> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(memo) + '">Chép</button></dd></dl>' +
       '<div class="muted">Quét bằng app ngân hàng, số tiền và nội dung đã điền sẵn. Chuyển xong tài khoản được nâng Pro, thường trong ngày.</div></div></div>';
@@ -245,7 +245,7 @@
     var p = S.plan; if (!p || !p.billing) return '';
     var u = p.usage, L = p.limits, bar = function (n, max, label) { return '<div class="use"><span>' + label + '</span><b class="num">' + n + (p.pro ? '' : ' / ' + max) + '</b></div>'; };
     var until = p.plan_until ? new Date(p.plan_until).toLocaleDateString('vi-VN') : '';
-    var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">đến ' + esc(until) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
+    var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">' + (p.lifetime ? 'vĩnh viễn' : 'đến ' + esc(until)) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
     var up = p.pro ? '' : '<div class="plan-up"><div><b>Nâng cấp Pro: ' + vnd(p.price.month) + '/tháng</b> <s class="muted">' + vnd(p.price.month_list) + '</s> · hoặc <b>' + vnd(p.price.year) + '/năm</b> (tiết kiệm ' + vnd(p.price.month * 12 - p.price.year) + ')</div>' +
       perksBox() +
       payBox(p) + '<div class="payinfo">' + (p.payment_info ? esc(p.payment_info) : p.pay ? '' : 'Liên hệ quản trị viên để nâng cấp, sau khi chuyển khoản tài khoản sẽ được nâng ngay.') + '</div></div>';
@@ -322,7 +322,7 @@
       }).join('') : '<div class="none">Chưa có báo cáo nào.</div>') + '</div>';
   }
   function isProRec(r) { return r.plan_until && new Date(r.plan_until).getTime() > Date.now(); }
-  function planTag(r) { return isProRec(r) ? ' <span class="badge ok">Pro đến ' + esc(new Date(r.plan_until).toLocaleDateString('vi-VN')) + '</span>' : ' <span class="badge">Free</span>'; }
+  function planTag(r) { return isProRec(r) ? (new Date(r.plan_until).getUTCFullYear() >= 2099 ? ' <span class="badge ok">Pro vĩnh viễn</span>' : ' <span class="badge ok">Pro đến ' + esc(new Date(r.plan_until).toLocaleDateString('vi-VN')) + '</span>') : ' <span class="badge">Free</span>'; }
   function paintRecs() {
     var box = $('#reclist'); if (!box || S.tab !== 'recruiters') return;
     var bb = $('#billbox');
@@ -338,7 +338,7 @@
       if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="suspended">Khoá</button>';
       if (r.status === 'suspended') btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="active">Mở khoá</button>';
       if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="role" data-v="' + (r.role === 'admin' ? 'recruiter' : 'admin') + '">' + (r.role === 'admin' ? 'Hạ xuống recruiter' : 'Cấp quyền admin') + '</button>';
-      if (r.status === 'active' && r.role !== 'admin') btns += '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="1">+1 tháng Pro</button><button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="12">+1 năm Pro</button>' + (isProRec(r) ? '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="0">Về Free</button>' : '');
+      if (r.status === 'active' && r.role !== 'admin') btns += '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="1">+1 tháng Pro</button><button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="life">Pro vĩnh viễn</button>' + (isProRec(r) ? '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="0">Về Free</button>' : '');
       if (r.status !== 'pending' && r.id !== S.me.id) btns += '<button class="b sm" type="button" data-act="rec-view" data-id="' + r.id + '">Xem dữ liệu</button>';
       return '<div class="li rec"><div class="tx"><div class="t1">' + esc(r.display_name) + ' <span class="badge ' + st[1] + '">' + st[0] + '</span>' + (r.role === 'admin' ? ' <span class="badge dup">Admin</span>' : planTag(r)) + '</div>' +
         '<div class="t2">' + esc(r.email) + ' · <a href="/' + esc(r.handle) + '" target="_blank" rel="noopener">/' + esc(r.handle) + '</a></div>' +
@@ -885,9 +885,10 @@
         return api('billing.set', { on: turnOn }).then(function (r) { S.billing = !!r.billing; toast(S.billing ? 'Đã bật tính phí' : 'Đã tắt tính phí'); paintRecs(); return api('bootstrap').then(function (d) { S.plan = d.plan; S.me = d.me; }).catch(function () {}); }).catch(fail);
       }
       case 'rec-plan': {
-        var mo = Number(t.getAttribute('data-m'));
-        if (mo === 0 && !confirm('Đưa tài khoản này về gói Free ngay?')) return;
-        return api('recruiters.update', { id: id, plan_months: mo }).then(function () { toast(mo ? 'Đã cộng ' + mo + ' tháng Pro' : 'Đã về gói Free'); return api('recruiters.list'); }).then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
+        var life = t.getAttribute('data-m') === 'life', mo = life ? 0 : Number(t.getAttribute('data-m'));
+        if (!life && mo === 0 && !confirm('Đưa tài khoản này về gói Free ngay?')) return;
+        if (life && !confirm('Cấp gói Pro vĩnh viễn cho tài khoản này?')) return;
+        return api('recruiters.update', life ? { id: id, plan_lifetime: true } : { id: id, plan_months: mo }).then(function () { toast(life ? 'Đã cấp Pro vĩnh viễn' : mo ? 'Đã cộng ' + mo + ' tháng Pro' : 'Đã về gói Free'); return api('recruiters.list'); }).then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
       }
       case 'rec-view': S.as = id; store('lh_as', id); location.hash = '#/overview'; return boot();
       case 'rec-set': {

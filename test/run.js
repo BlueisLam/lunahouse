@@ -951,6 +951,10 @@ test('gói Free: Telegram chỉ cho Pro (email thì ai cũng có); Pro hết h�
   await admin('recruiters.update', { id: recB.id, plan_months: 1 });
   const first = new Date(recOf(recB.id).plan_until); await admin('recruiters.update', { id: recB.id, plan_months: 12 });
   assert.ok((new Date(recOf(recB.id).plan_until) - first) / 86400e3 > 360, 'cộng dồn vào hạn còn lại');
+  await admin('recruiters.update', { id: recB.id, plan_lifetime: true });
+  assert.strictEqual(PLAN.isPro(recOf(recB.id)), true); assert.strictEqual(PLAN.isLifetime(recOf(recB.id)), true);
+  const sm = (await as(ckB)('bootstrap')).plan; assert.strictEqual(sm.lifetime, true); assert.strictEqual(sm.price.lifetime, 999000); assert.strictEqual(sm.price.lifetime_list, 1995000); assert.strictEqual(sm.price.year, undefined);
+  await assert.rejects(() => as(ckB)('recruiters.update', { id: recB.id, plan_lifetime: true }), /403/, 'tự cấp vĩnh viễn là không được');
   await admin('recruiters.update', { id: recB.id, plan_months: 0 }); assert.strictEqual(recOf(recB.id).plan_until, null);
   await assert.rejects(() => admin('recruiters.update', { id: recB.id, plan_months: -1 }), /400/);
   await assert.rejects(() => as(ckB)('recruiters.update', { id: recB.id, plan_months: 12 }), /403/, 'tự nâng gói là không được');
