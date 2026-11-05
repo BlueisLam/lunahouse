@@ -211,6 +211,20 @@
 
   /* ---------- gói Free / Pro ---------- */
   function vnd(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + 'đ'; }
+  /** Mã VietQR đã điền sẵn số tiền và nội dung chuyển khoản (ngân hàng nào quét cũng được). */
+  function payUrl(p, kind) {
+    var amount = kind === 'year' ? p.price.year : p.price.month, memo = 'LUNA ' + S.me.handle;
+    return 'https://img.vietqr.io/image/' + encodeURIComponent(p.pay.bank) + '-' + encodeURIComponent(p.pay.account) + '-compact2.png?amount=' + amount + '&addInfo=' + encodeURIComponent(memo) + '&accountName=' + encodeURIComponent(p.pay.name || '');
+  }
+  function payBox(p) {
+    if (!p.pay) return '';
+    var memo = 'LUNA ' + S.me.handle;
+    return '<div class="payqr"><img id="payimg" src="' + esc(payUrl(p, 'month')) + '" alt="Mã QR chuyển khoản" width="220" height="220"><div class="payside">' +
+      '<div class="seg" role="group" aria-label="Chọn gói"><button type="button" class="on" data-act="pay-plan" data-v="month">1 tháng · ' + vnd(p.price.month) + '</button><button type="button" data-act="pay-plan" data-v="year">1 năm · ' + vnd(p.price.year) + '</button></div>' +
+      '<dl><dt>Ngân hàng</dt><dd>' + esc(p.pay.bank) + '</dd><dt>Số tài khoản</dt><dd><b class="num">' + esc(p.pay.account) + '</b> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(p.pay.account) + '">Chép</button></dd>' +
+      (p.pay.name ? '<dt>Chủ tài khoản</dt><dd>' + esc(p.pay.name) + '</dd>' : '') + '<dt>Nội dung</dt><dd><b class="num">' + esc(memo) + '</b> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(memo) + '">Chép</button></dd></dl>' +
+      '<div class="muted">Quét bằng app ngân hàng, số tiền và nội dung đã điền sẵn. Chuyển xong tài khoản được nâng Pro, thường trong ngày.</div></div></div>';
+  }
   function planBox() {
     var p = S.plan; if (!p) return '';
     var u = p.usage, L = p.limits, bar = function (n, max, label) { return '<div class="use"><span>' + label + '</span><b class="num">' + n + (p.pro ? '' : ' / ' + max) + '</b></div>'; };
@@ -218,7 +232,7 @@
     var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">đến ' + esc(until) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
     var up = p.pro ? '' : '<div class="plan-up"><div><b>Nâng cấp Pro: ' + vnd(p.price.month) + '/tháng</b> <s class="muted">' + vnd(p.price.month_list) + '</s> · hoặc <b>' + vnd(p.price.year) + '/năm</b> (tiết kiệm ' + vnd(p.price.month * 12 - p.price.year) + ')</div>' +
       '<div class="muted">Pro mở: job và ứng viên không giới hạn, AI đọc CV không giới hạn, chấm điểm AI hàng loạt, viết JD bằng AI, báo cáo ngày/tuần/quý/năm + CSV, Telegram, bỏ chữ "Powered by Luna", logo và ảnh bìa.</div>' +
-      '<div class="payinfo">' + (p.payment_info ? esc(p.payment_info) : 'Liên hệ quản trị viên để nâng cấp, sau khi chuyển khoản tài khoản sẽ được nâng ngay.') + '</div></div>';
+      payBox(p) + '<div class="payinfo">' + (p.payment_info ? esc(p.payment_info) : p.pay ? '' : 'Liên hệ quản trị viên để nâng cấp, sau khi chuyển khoản tài khoản sẽ được nâng ngay.') + '</div></div>';
     return '<section class="box planbox"><h2>Gói của bạn ' + head + '</h2><div class="uses">' + bar(u.jobs, L.jobs, 'Job đang mở') + bar(u.candidates, L.candidates, 'Ứng viên') + bar(u.ai, L.ai_month, 'Lượt AI đọc CV tháng này') + '</div>' + up + '</section>';
   }
 
@@ -816,6 +830,7 @@
       case 'rpreset': { var pv = id; S.rep.preset = pv; if (pv !== 'custom') Object.assign(S.rep, repRange(pv)); S.rep.data = null; return pv === 'custom' ? paintReport() : loadReport(); }
       case 'rcsv': if (!isPro()) return toast('Xuất CSV và xem theo ngày/tuần/quý/năm chỉ có ở gói Pro. Xem mục Cài đặt để nâng cấp.', true); return repCsv();
       case 'logout': return logout();
+      case 'pay-plan': { var im = $('#payimg'); if (im && S.plan && S.plan.pay) im.src = payUrl(S.plan, t.getAttribute('data-v')); $$('[data-act="pay-plan"]').forEach(function (x) { x.classList.toggle('on', x === t); }); return; }
       case 'copy-url': return copy(t.getAttribute('data-v'), t);
       case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
       case 'rec-plan': {

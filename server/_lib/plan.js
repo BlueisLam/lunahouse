@@ -50,6 +50,8 @@ async function summary(rec, rid) {
   return {
     pro, role_admin: rec.role === 'admin', plan_until: rec.plan_until || null, limits: LIMITS, price: PRICE,
     payment_info: process.env.PAYMENT_INFO || '',
+    // Thông tin nhận tiền để dựng mã VietQR: PAY_BANK (mã ngân hàng, vd VCB), PAY_ACCOUNT, PAY_NAME
+    pay: process.env.PAY_BANK && process.env.PAY_ACCOUNT ? { bank: process.env.PAY_BANK, account: process.env.PAY_ACCOUNT, name: process.env.PAY_NAME || '' } : null,
     usage: { jobs: await countOf('lh_jobs', rid, q => q.eq('status', 'open')), candidates: await countOf('lh_candidates', rid), ai: aiUsed(rec) },
   };
 }

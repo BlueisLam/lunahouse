@@ -970,6 +970,15 @@ test('gói Free: tối đa 100 ứng viên (thêm tay và nộp qua trang đều
   H.fake.t.lh_candidates = H.fake.t.lh_candidates.filter(c => !String(c.id).startsWith('fill-'));
 });
 
+test('thanh toán QR: chỉ có thông tin nhận tiền khi đã cấu hình PAY_BANK/PAY_ACCOUNT', async () => {
+  assert.strictEqual((await as(ckB)('bootstrap')).plan.pay, null);
+  Object.assign(process.env, { PAY_BANK: 'VCB', PAY_ACCOUNT: '0001112223', PAY_NAME: 'NGUYEN VAN A' });
+  try {
+    const pay = (await as(ckB)('bootstrap')).plan.pay;
+    assert.deepStrictEqual(pay, { bank: 'VCB', account: '0001112223', name: 'NGUYEN VAN A' });
+  } finally { delete process.env.PAY_BANK; delete process.env.PAY_ACCOUNT; delete process.env.PAY_NAME; }
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {
