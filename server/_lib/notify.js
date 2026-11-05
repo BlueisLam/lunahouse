@@ -175,6 +175,22 @@ ${quote(body)}
   return email({ to: thread.author_email, subject: `${tg.name || 'Luna'} đã trả lời câu hỏi về ${job ? job.title : 'vị trí'}`, html: shell(inner), replyTo: tg.replyTo, fromName: tg.name });
 }
 
+const REPORT_KIND = { bug: '🐞 Báo lỗi', idea: '💡 Góp ý', abuse: '🚩 Tố cáo vi phạm', other: '📝 Khác' };
+/** Recruiter gửi báo cáo → báo tài khoản chủ. */
+async function notifyReport(rec, rep, base) {
+  const owner = T.notifyTarget(null);
+  const link = `${base || site()}/admin/#/recruiters`;
+  const label = REPORT_KIND[rep.kind] || REPORT_KIND.other;
+  const inner = `<p style="margin:0 0 8px;font-size:18px;font-weight:700">${esc(label)} từ ${esc(rec.display_name || rec.email)}</p>
+<p style="margin:0 0 6px;color:#667">${esc(rec.email)} · /${esc(rec.handle)}${rep.page ? ' · mục ' + esc(rep.page) : ''}</p>
+${quote(rep.message)}
+<p style="margin:16px 0 0">${btn(link, 'Mở trong admin')}</p>`;
+  return settle([
+    telegram(`${esc(label)} từ <b>${esc(rec.display_name || rec.email)}</b> (/${esc(rec.handle)})\n${esc(rep.message.slice(0, 600))}`, owner.chat),
+    email({ to: owner.to, subject: `${label}: ${rec.display_name || rec.email}`, html: shell(inner), replyTo: rec.contact_email || rec.email }),
+  ]);
+}
+
 /** Có người đăng ký recruiter mới → báo tài khoản chủ để duyệt. */
 async function notifyNewRecruiter(rec, base) {
   const owner = T.notifyTarget(null);
@@ -206,4 +222,4 @@ function emailPasswordReset(rec, link) {
   return email({ to: rec.email, subject: 'Đặt lại mật khẩu Luna', html: shell(inner) });
 }
 
-module.exports = { notifyNewRecruiter, emailRecruiterApproved, emailPasswordReset, baseUrl, threadLink, notifyThreadMessage, emailThreadReceipt, emailThreadReply, telegram, email, settle, notifyNewApplication, emailReceipt, emailStatus, site };
+module.exports = { notifyReport, notifyNewRecruiter, emailRecruiterApproved, emailPasswordReset, baseUrl, threadLink, notifyThreadMessage, emailThreadReceipt, emailThreadReply, telegram, email, settle, notifyNewApplication, emailReceipt, emailStatus, site };

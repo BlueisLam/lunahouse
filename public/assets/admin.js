@@ -276,8 +276,18 @@
       '<div class="setrow two">' + f('p-logo', 'Logo trang riêng (link ảnh https)' + (S.plan && S.plan.billing ? ' · Pro' : ''), m.logo_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + f('p-cover', 'Ảnh bìa (link ảnh https)' + (S.plan && S.plan.billing ? ' · Pro' : ''), m.cover_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + '</div>' +
       '<div class="setrow"><div class="field"><label for="p-comm">Cộng đồng bạn quản lý hoặc giới thiệu</label><textarea class="i2" id="p-comm" rows="5" placeholder="facebook | Tên nhóm | Nhóm Facebook | https://facebook.com/groups/...">' + esc(commText(m.communities)) + '</textarea><div class="help">Mỗi dòng một nhóm: loại (facebook, linkedin, zalo) | tên | ghi chú | link https.</div></div></div>' +
       '<h2>Thông báo hồ sơ mới</h2>' +
-      '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', 'Chỉ có ở gói Pro. Nhắn bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
-      '<div class="setrow"><button class="b pri" type="submit" id="psave">Lưu thay đổi</button></div></form>';
+      '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', (S.plan && S.plan.billing ? 'Chỉ có ở gói Pro. ' : '') + 'Nhắn bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
+      '<div class="setrow"><button class="b pri" type="submit" id="psave">Lưu thay đổi</button></div></form>' +
+      '<section class="box repbox"><h2>Báo lỗi / góp ý cho admin</h2><form id="rf" class="setf">' +
+      '<div class="setrow two"><div class="field"><label for="r-kind">Loại</label><select class="i2" id="r-kind"><option value="bug">🐞 Báo lỗi</option><option value="idea">💡 Góp ý, đề xuất tính năng</option><option value="abuse">🚩 Tố cáo nội dung vi phạm</option><option value="other">📝 Khác</option></select></div></div>' +
+      '<div class="setrow"><div class="field"><label for="r-msg">Nội dung</label><textarea class="i2" id="r-msg" rows="4" maxlength="2000" placeholder="Bạn gặp gì, ở mục nào, bấm gì thì bị? Càng cụ thể càng dễ sửa."></textarea></div></div>' +
+      '<div class="setrow"><button class="b pri" type="submit" id="rsend">Gửi cho admin</button></div></form></section>';
+    $('#rf').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = $('#rsend'); btn.disabled = true;
+      api('reports.send', { kind: $('#r-kind').value, message: $('#r-msg').value, page: 'Cài đặt' })
+        .then(function () { $('#r-msg').value = ''; toast('Đã gửi, cảm ơn bạn!'); }).catch(fail).then(function () { btn.disabled = false; });
+    });
     $('#pf').addEventListener('submit', function (e) {
       e.preventDefault();
       var btn = $('#psave'); btn.disabled = true;
@@ -294,9 +304,23 @@
   var RST = { pending: ['Chờ duyệt', 'warn'], active: ['Đang hoạt động', 'ok'], suspended: ['Đã khoá', 'err'] };
   VIEWS.recruiters = function () {
     if (!S.me || S.me.role !== 'admin') { $('#view').innerHTML = '<div class="none">Bạn không có quyền xem mục này.</div>'; return; }
-    $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div id="billbox"></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
+    $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div id="billbox"></div><div id="repbox"></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
     api('recruiters.list').then(function (r) { S.recs = r.recruiters; S.billing = !!r.billing; paintRecs(); }).catch(fail);
+    loadReports();
   };
+  var RKIND = { bug: '🐞 Lỗi', idea: '💡 Góp ý', abuse: '🚩 Vi phạm', other: '📝 Khác' };
+  function loadReports() { api('reports.list').then(function (r) { S.reports = r.reports; S.repMissing = !!r.missing; paintReports(); }).catch(fail); }
+  function paintReports() {
+    var box = $('#repbox'); if (!box || S.tab !== 'recruiters') return;
+    if (S.repMissing) { box.innerHTML = '<div class="box repadm"><div class="muted">Chưa có bảng báo cáo. Chạy file SQL <b>2026-11-bao-cao.sql</b> trong Supabase để xem danh sách tại đây.</div></div>'; return; }
+    var list = S.reports || [], open = list.filter(function (x) { return x.status !== 'done'; });
+    box.innerHTML = '<div class="box repadm"><h2>Báo cáo từ recruiter ' + (open.length ? '<span class="badge warn">' + open.length + ' mới</span>' : '') + '</h2>' +
+      (list.length ? list.map(function (x) {
+        var w = x.who ? esc(x.who.display_name || x.who.email) + ' <span class="muted">/' + esc(x.who.handle) + '</span>' : '<span class="muted">đã xoá</span>';
+        return '<div class="li rep' + (x.status === 'done' ? ' done' : '') + '"><div class="repm"><div><b>' + (RKIND[x.kind] || RKIND.other) + '</b> · ' + w + ' <span class="muted">· ' + esc(new Date(x.created_at).toLocaleString('vi-VN')) + (x.page ? ' · ' + esc(x.page) : '') + '</span></div><div class="reptx">' + esc(x.message) + '</div></div>' +
+          '<div class="recb"><button class="b sm" type="button" data-act="rep-set" data-id="' + x.id + '" data-v="' + (x.status === 'done' ? 'new' : 'done') + '">' + (x.status === 'done' ? 'Mở lại' : 'Đã xử lý') + '</button><button class="b sm" type="button" data-act="rep-del" data-id="' + x.id + '">Xoá</button></div></div>';
+      }).join('') : '<div class="none">Chưa có báo cáo nào.</div>') + '</div>';
+  }
   function isProRec(r) { return r.plan_until && new Date(r.plan_until).getTime() > Date.now(); }
   function planTag(r) { return isProRec(r) ? ' <span class="badge ok">Pro đến ' + esc(new Date(r.plan_until).toLocaleDateString('vi-VN')) + '</span>' : ' <span class="badge">Free</span>'; }
   function paintRecs() {
@@ -853,6 +877,8 @@
       case 'pay-plan': { var im = $('#payimg'); if (im && S.plan && S.plan.pay) im.src = payUrl(S.plan, t.getAttribute('data-v')); $$('[data-act="pay-plan"]').forEach(function (x) { x.classList.toggle('on', x === t); }); return; }
       case 'copy-url': return copy(t.getAttribute('data-v'), t);
       case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
+      case 'rep-set': return api('reports.update', { id: id, status: t.getAttribute('data-v') }).then(loadReports).catch(fail);
+      case 'rep-del': if (!confirm('Xoá báo cáo này?')) return; return api('reports.update', { id: id, delete: true }).then(loadReports).catch(fail);
       case 'bill-toggle': {
         var turnOn = !S.billing;
         if (!confirm(turnOn ? 'Bật tính phí? Người dùng Free sẽ bị giới hạn và thấy giá nâng cấp Pro.' : 'Tắt tính phí? Mọi người dùng đủ tính năng, không giới hạn.')) return;

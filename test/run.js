@@ -997,6 +997,23 @@ test('công tắc tính phí: tắt lại thì Free hết giới hạn, trang c�
   await admin('billing.set', { on: true });
   assert.strictEqual(PLAN.isPro(recOf(recB.id)), false);
 });
+test('báo cáo: recruiter gửi báo lỗi/góp ý, admin nhận thông báo và xem/đóng/xoá; có giới hạn số lần gửi, người thường không xem được danh sách', async () => {
+  const bb = as(ckB);
+  await assert.rejects(() => bb('reports.send', { kind: 'bug', message: 'x' }), e => e.status === 400);
+  H.calls.length = 0;
+  await bb('reports.send', { kind: 'bug', message: 'Nút Lưu ở Cài đặt bị đơ khi bấm', page: 'Cài đặt' });
+  assert.ok(H.calls.some(x => /resend/.test(x.url) && /Nút Lưu/.test(x.body.html)), 'email tới admin');
+  const rows = H.fake.t.lh_reports; assert.strictEqual(rows.length, 1); assert.strictEqual(rows[0].recruiter_id, recB.id); assert.strictEqual(rows[0].status, 'new');
+  await bb('reports.send', { kind: 'không-hợp-lệ', message: 'Một góp ý khác về giao diện' });
+  assert.strictEqual(H.fake.t.lh_reports[1].kind, 'other');
+  await assert.rejects(() => bb('reports.list'), e => e.status === 403);
+  await assert.rejects(() => bb('reports.update', { id: rows[0].id, status: 'done' }), e => e.status === 403);
+  const l = await admin('reports.list'); assert.strictEqual(l.reports.length, 2); assert.strictEqual(l.reports[0].who.handle, recB.handle);
+  await admin('reports.update', { id: rows[0].id, status: 'done' }); assert.strictEqual(H.fake.t.lh_reports.find(x => x.id === rows[0].id).status, 'done');
+  await admin('reports.update', { id: rows[0].id, delete: true }); assert.strictEqual(H.fake.t.lh_reports.length, 1);
+  for (let i = 0; i < 4; i++) await bb('reports.send', { kind: 'idea', message: 'Góp ý số ' + i + ' cho web' });
+  await assert.rejects(() => bb('reports.send', { kind: 'idea', message: 'Góp ý quá nhiều lần' }), e => e.status === 429);
+});
 test('thanh toán QR: chỉ có thông tin nhận tiền khi đã cấu hình PAY_BANK/PAY_ACCOUNT', async () => {
   assert.strictEqual((await as(ckB)('bootstrap')).plan.pay, null);
   Object.assign(process.env, { PAY_BANK: 'VCB', PAY_ACCOUNT: '0001112223', PAY_NAME: 'NGUYEN VAN A' });

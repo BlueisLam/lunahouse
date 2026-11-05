@@ -290,3 +290,12 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 
 .billsw { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 14px 16px; margin-bottom: 14px; }
 .billsw .muted { margin-top: 4px; max-width: 560px; }
+
+.repbox { margin-top: 14px; }
+.repadm { margin-bottom: 14px; }
+.repadm h2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.li.rep { align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.li.rep.done { opacity: .55; }
+.li.rep .repm { flex: 1 1 320px; display: grid; gap: 4px; }
+.li.rep .reptx { white-space: pre-wrap; word-break: break-word; }
+.li.rep .recb { display: flex; gap: 6px; margin-left: auto; }

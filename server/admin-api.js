@@ -437,6 +437,39 @@ A['profile.save'] = async (b) => {
   return { me: T.selfView(row) };
 };
 
+const REPORT_KINDS = ['bug', 'idea', 'abuse', 'other'];
+/** Recruiter gửi báo lỗi / góp ý cho admin. Lưu vào lh_reports (nếu chưa có bảng vẫn báo được qua email/Telegram). */
+A['reports.send'] = async (b) => {
+  const message = String(b.message || '').trim().slice(0, 2000);
+  if (message.length < 5) throw new U.HttpError(400, 'Bạn mô tả thêm một chút nhé (ít nhất 5 ký tự).');
+  const kind = REPORT_KINDS.includes(b.kind) ? b.kind : 'other';
+  const page = String(b.page || '').slice(0, 60);
+  const db = sb();
+  const since = new Date(Date.now() - 3600e3).toISOString();
+  const recent = await db.from('lh_reports').select('id', { count: 'exact', head: true }).eq('recruiter_id', b._rec.id).gte('created_at', since);
+  if (!recent.error && (recent.count || 0) >= 5) throw new U.HttpError(429, 'Bạn gửi hơi nhiều trong một giờ, thử lại sau nhé.');
+  const ins = await db.from('lh_reports').insert({ recruiter_id: b._rec.id, kind, message, page }).select().single();
+  const rep = ins.error ? { kind, message, page } : ins.data;
+  await N.notifyReport(b._rec, rep, b._base);
+  return { ok: true };
+};
+A['reports.list'] = async (b) => {
+  needAdmin(b);
+  const db = sb();
+  const r = await db.from('lh_reports').select('*').order('created_at', { ascending: false }).limit(200);
+  if (r.error) return { reports: [], missing: true };
+  const ids = [...new Set(r.data.map(x => x.recruiter_id))];
+  const recs = ids.length ? must(await db.from('lh_recruiters').select('id,email,handle,display_name').in('id', ids), 'recruiters') : [];
+  const by = Object.fromEntries(recs.map(x => [x.id, x]));
+  return { reports: r.data.map(x => ({ ...x, who: by[x.recruiter_id] || null })) };
+};
+A['reports.update'] = async (b) => {
+  needAdmin(b);
+  if (b.delete) must(await sb().from('lh_reports').delete().eq('id', b.id), 'report');
+  else must(await sb().from('lh_reports').update({ status: b.status === 'done' ? 'done' : 'new' }).eq('id', b.id), 'report');
+  return { ok: true };
+};
+
 A['billing.set'] = async (b) => {
   needAdmin(b);
   return { billing: await PLAN.setBilling(b.on === true) };
