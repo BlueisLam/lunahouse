@@ -64,7 +64,7 @@
     var top = $('#top');
     if (top) {
       top.className = 'top';
-      top.innerHTML = '<div class="wrap"><a class="logo" href="' + home_() + '"><span class="moon" aria-hidden="true"></span>' + esc(LH.brand || 'Luna') + '</a><span class="tagline">Personal recruiting · IT &amp; Game</span>' +
+      top.innerHTML = '<div class="wrap"><a class="logo" href="' + home_() + '">' + (/^https:\/\//.test(LH.logo_url || '') ? '<img class="plogo" src="' + esc(LH.logo_url) + '" alt="" height="28">' : '<span class="moon" aria-hidden="true"></span>') + esc(LH.brand || 'Luna') + '</a><span class="tagline">Personal recruiting · IT &amp; Game</span>' +
         '<nav class="nav" aria-label="Điều hướng">' + nav.map(function (n) {
           return '<a href="' + n[0] + '"' + (page === n[2] || (page === 'job' && n[2] === 'home') ? ' aria-current="page"' : '') + '>' + n[1] + '</a>';
         }).join('') + '</nav>' + '<button class="theme-btn" type="button" data-theme-toggle aria-label="Đổi giao diện sáng hoặc tối" title="Đổi giao diện sáng / tối"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>' + '</div>';
@@ -78,7 +78,7 @@
       if (LH.telegram) contact.push('<a href="' + esc(LH.telegram) + '" rel="noopener">Telegram</a>');
       foot.className = 'foot';
       foot.innerHTML = '<div class="wrap"><span>' + esc(LH.brand || 'Luna') + ' · ' + esc(LH.recruiter || '') + (LH.title ? ', ' + esc(LH.title) : '') + '</span>' +
-        contact.join('') + '<span class="sp"><a href="/admin/#/register">Đăng ký recruiter</a> · <a href="/admin/">Đăng nhập</a> · <a href="/privacy.html">Quyền riêng tư</a></span></div>';
+        contact.join('') + '<span class="sp">' + (LH.pro === false ? '<a href="/">Powered by Luna</a> · ' : '') + '<a href="/admin/#/register">Đăng ký recruiter</a> · <a href="/admin/">Đăng nhập</a> · <a href="/privacy.html">Quyền riêng tư</a></span></div>';
     }
   }
 
@@ -87,8 +87,10 @@
     if (!p) return;
     LH.handle = p.handle; LH.isOwnerHome = !!p.is_default; LH.recruiter = p.display_name || ''; LH.title = p.title || ''; LH.contactEmail = p.contact_email || '';
     LH.zalo = p.zalo || ''; LH.facebook = p.facebook || ''; LH.linkedin = p.linkedin || ''; LH.telegram = p.telegram || '';
-    LH.communities = p.communities || [];
+    LH.communities = p.communities || []; LH.pro = !!p.pro; LH.logo_url = p.logo_url || '';
     chrome(); communities();
+    var hero = $('.hero');
+    if (hero && /^https:\/\//.test(p.cover_url || '')) { hero.classList.add('has-cover'); hero.style.backgroundImage = 'linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), var(--bg)), url("' + p.cover_url.replace(/["()\\\s]/g, encodeURIComponent) + '")'; }
     var name = p.display_name || 'mình', lede = $('#lede'), eb = $('#eyebrow-t');
     if (eb && p.title) eb.textContent = p.title;
     if (lede) lede.textContent = p.bio || ('Mình là ' + name + (p.title ? ', làm ' + p.title : '') + ', đang tuyển cho các công ty IT và game. Đây là các vị trí mình đang tuyển: JD đầy đủ, nộp CV một lần, và bạn tự tra cứu được hồ sơ đang ở bước nào mà không phải hỏi lại.');

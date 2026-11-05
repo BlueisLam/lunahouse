@@ -34,6 +34,11 @@ create table if not exists lh_recruiters (
   telegram_chat_id text not null default '',                   -- nhận thông báo hồ sơ mới qua bot Luna
   notify_email  text not null default '',                      -- trống = dùng email đăng nhập
   ip_hash       text not null default '',
+  plan_until    timestamptz,                                   -- còn hạn Pro tới lúc này (trống = Free)
+  ai_month      text not null default '',
+  ai_count      integer not null default 0,
+  logo_url      text not null default '',
+  cover_url     text not null default '',
   last_login_at timestamptz,
   created_at    timestamptz default now(),
   updated_at    timestamptz default now()

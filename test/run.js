@@ -860,6 +860,116 @@ test('tài khoản chủ: nhận dữ liệu cũ chưa có chủ; trang chủ t�
   } finally { H.fake.t.lh_recruiters = saved.r; H.fake.t.lh_jobs = saved.j; }
 });
 
+
+// ---------- gói Free / Pro ----------
+const PLAN = require('../server/_lib/plan');
+const recOf = (id) => H.fake.t.lh_recruiters.find(r => r.id === id);
+const setFree = (id) => { recOf(id).plan_until = null; };
+
+test('gói: duyệt lần đầu tặng 30 ngày Pro, email báo tặng; admin tổng luôn là Pro', async () => {
+  const c = await auth({ action: 'register', email: 'chi@example.com', password: 'matkhau-dai', display_name: 'Chi', handle: 'chi-hr' }, ip(70));
+  assert.strictEqual(c.status, 200);
+  const chi = H.fake.t.lh_recruiters.find(r => r.email === 'chi@example.com');
+  assert.strictEqual(PLAN.isPro(chi), false, 'chưa duyệt thì chưa có Pro');
+  H.calls.length = 0;
+  await admin('recruiters.update', { id: chi.id, status: 'active' });
+  const days = (new Date(recOf(chi.id).plan_until) - Date.now()) / 86400e3;
+  assert.ok(days > 29 && days <= 30.01, 'tặng 30 ngày: ' + days);
+  assert.ok(H.calls.some(x => /resend/.test(x.url) && /1 tháng gói Pro/.test(x.body.html)));
+  await admin('recruiters.update', { id: chi.id, status: 'suspended' }); await admin('recruiters.update', { id: chi.id, status: 'active' });
+  assert.ok((new Date(recOf(chi.id).plan_until) - Date.now()) / 86400e3 <= 30.01, 'khoá rồi mở không được tặng lại');
+  assert.strictEqual(PLAN.isPro(H.fake.t.lh_recruiters.find(r => r.email === 'owner@example.com')), true);
+  assert.strictEqual((await admin('bootstrap')).plan.role_admin, true);
+});
+test('gói Free: tối đa 3 job đang mở (nháp không tính); Pro không giới hạn', async () => {
+  setFree(recB.id);
+  const b = as(ckB);
+  const mk = (t, st) => b('jobs.save', { title: t, status: st, must_have_tech: 'X' });
+  await mk('Nháp 1', 'draft'); await mk('Nháp 2', 'draft'); await mk('Nháp 3', 'draft'); await mk('Nháp 4', 'draft');   // nháp tuỳ ý
+  await mk('Job mở 2', 'open'); const j3 = (await mk('Job mở 3', 'open')).job;
+  const err = await mk('Job mở 4', 'open').catch(e => e);
+  assert.strictEqual(err.status, 403); assert.match(err.message, /Pro/);
+  const draft = H.fake.t.lh_jobs.find(j => j.title === 'Nháp 1');
+  await assert.rejects(() => b('jobs.save', { id: draft.id, status: 'open' }), /403/, 'mở nháp cũng bị đếm');
+  await b('jobs.save', { id: j3.id, title: 'Job mở 3 (sửa)' });                 // sửa job đang mở thì không sao
+  await b('jobs.save', { id: j3.id, status: 'paused' });                          // đóng bớt thì mở được cái khác
+  await b('jobs.save', { id: draft.id, status: 'open' });
+  const plan = (await b('bootstrap')).plan; assert.strictEqual(plan.pro, false); assert.strictEqual(plan.usage.jobs, 3);
+  await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+  await mk('Job mở 5', 'open');                                                   // Pro: không giới hạn
+  assert.strictEqual((await b('bootstrap')).plan.pro, true);
+});
+test('gói Free: tính năng chỉ Pro bị chặn (chấm điểm AI, JD bằng AI, logo/ảnh bìa, xem theo ngày), Pro thì dùng được', async () => {
+  const b = as(ckB);
+  setFree(recB.id);
+  await assert.rejects(() => b('match.score', { job_id: jobB.id, ids: [] }), /403/);
+  await assert.rejects(() => b('jobs.fromText', { text: 'x'.repeat(80) }), /403/);
+  await assert.rejects(() => b('profile.save', { logo_url: 'https://example.com/logo.png' }), /403/);
+  const r = await b('report.get', { from: '2026-11-01', to: '2026-11-30', group: 'day' });
+  assert.strictEqual(r.group, 'month', 'Free bị ép xem theo tháng');
+  await b('profile.save', { display_name: 'Bình Tuyển' });                      // phần còn lại của hồ sơ vẫn lưu được
+  await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+  assert.strictEqual((await b('report.get', { from: '2026-11-01', to: '2026-11-30', group: 'day' })).group, 'day');
+  assert.ok((await b('jobs.fromText', { text: 'Tuyển Senior Java, 5 năm kinh nghiệm Spring Boot, Banking, lương 45-70 triệu. '.repeat(2) })).job.title);
+  await b('profile.save', { logo_url: 'https://example.com/logo.png', cover_url: 'https://example.com/cover.jpg' });
+  await assert.rejects(() => b('profile.save', { logo_url: 'javascript:alert(1)' }), /400/);
+});
+test('gói: trang công khai chỉ hiện logo/ảnh bìa khi Pro, và báo free/pro để ẩn "Powered by Luna"', async () => {
+  const get = async () => (await H.invoke(H.F('jobs-public'), { method: 'GET', query: { handle: 'binh-tuyen' } })).json.profile;
+  let p = await get(); assert.strictEqual(p.pro, true); assert.strictEqual(p.logo_url, 'https://example.com/logo.png');
+  setFree(recB.id);
+  p = await get(); assert.strictEqual(p.pro, false); assert.strictEqual(p.logo_url, ''); assert.strictEqual(p.cover_url, '');
+  assert.strictEqual((await H.invoke(H.F('jobs-public'), { method: 'GET' })).json.profile.pro, true, 'trang chủ của chủ luôn Pro');
+  await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+});
+test('gói Free: Telegram chỉ cho Pro (email thì ai cũng có); Pro hết hạn thì tự về Free', async () => {
+  const sendApp = async (n, email) => { H.calls.length = 0; const r = await H.invoke(H.F('apply'), { body: applyBody({ job_slug: jobB.slug, email, phone_number: '09055500' + n }), headers: ip(40 + Number(n)) }); assert.strictEqual(r.status, 200, JSON.stringify(r.json)); };
+  await sendApp('11', 'pro1@example.com');
+  assert.ok(H.calls.some(c => /telegram/.test(c.url) && c.body.chat_id === '555123'), 'Pro nhận Telegram');
+  recOf(recB.id).plan_until = new Date(Date.now() - 1000).toISOString();         // hết hạn
+  await sendApp('12', 'free1@example.com');
+  assert.ok(!H.calls.some(c => /telegram/.test(c.url) && c.body.chat_id === '555123'), 'Free không nhận Telegram');
+  assert.ok(H.calls.some(c => /resend/.test(c.url) && c.body.to[0] === 'thongbao-binh@example.com'), 'vẫn nhận email');
+  assert.strictEqual((await as(ckB)('bootstrap')).plan.pro, false);
+  await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+  const first = new Date(recOf(recB.id).plan_until); await admin('recruiters.update', { id: recB.id, plan_months: 12 });
+  assert.ok((new Date(recOf(recB.id).plan_until) - first) / 86400e3 > 360, 'cộng dồn vào hạn còn lại');
+  await admin('recruiters.update', { id: recB.id, plan_months: 0 }); assert.strictEqual(recOf(recB.id).plan_until, null);
+  await assert.rejects(() => admin('recruiters.update', { id: recB.id, plan_months: -1 }), /400/);
+  await assert.rejects(() => as(ckB)('recruiters.update', { id: recB.id, plan_months: 12 }), /403/, 'tự nâng gói là không được');
+});
+test('gói Free: 30 lượt AI đọc CV mỗi tháng, sang tháng sau tự reset; Pro không giới hạn', async () => {
+  const b = as(ckB); setFree(recB.id);
+  const cand = H.fake.t.lh_candidates.find(c => c.recruiter_id === recB.id);
+  const row = recOf(recB.id); row.ai_month = PLAN.monthKey(); row.ai_count = 29;
+  H.state.cv = null;
+  await b('candidates.parse', { id: cand.id, text: H.CV_TEXT });
+  assert.strictEqual(recOf(recB.id).ai_count, 30);
+  const err = await b('candidates.parse', { id: cand.id, text: H.CV_TEXT }).catch(e => e);
+  assert.strictEqual(err.status, 403); assert.match(err.message, /30 lượt/);
+  assert.strictEqual((await b('bootstrap')).plan.usage.ai, 30);
+  row.ai_month = '2020-01';                                                         // tháng cũ → đếm lại từ 0
+  await b('candidates.parse', { id: cand.id, text: H.CV_TEXT }); assert.strictEqual(recOf(recB.id).ai_count, 1);
+  row.ai_count = 500; row.ai_month = PLAN.monthKey(); await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+  await b('candidates.parse', { id: cand.id, text: H.CV_TEXT });
+});
+test('gói Free: tối đa 100 ứng viên (thêm tay và nộp qua trang đều bị chặn, ứng viên cũ nộp lại thì không)', async () => {
+  const b = as(ckB); setFree(recB.id);
+  const have = H.fake.t.lh_candidates.filter(c => c.recruiter_id === recB.id).length;
+  for (let i = have; i < 100; i++) H.fake.t.lh_candidates.push({ id: 'fill-' + i, recruiter_id: recB.id, full_name: 'Fill ' + i, email: `fill${i}@x.com`, email_norm: `fill${i}@x.com`, phone_norm: '', created_at: new Date().toISOString() });
+  await assert.rejects(() => b('candidates.save', { full_name: 'Người thứ 101' }), /403/);
+  const up = await H.invoke(H.F('admin-api'), { body: { action: 'candidates.upload', file: { name: 'a.pdf', data: H.fakePdf() } }, headers: { cookie: ckB, 'x-lh': '1' } });
+  assert.strictEqual(up.status, 403);
+  const blocked = await H.invoke(H.F('apply'), { body: applyBody({ job_slug: jobB.slug, email: 'moi101@example.com', phone_number: '0905551101' }), headers: ip(51) });
+  assert.strictEqual(blocked.status, 503); assert.match(blocked.json.error, /tạm thời chưa nhận/);
+  assert.ok(!H.fake.t.lh_candidates.some(c => c.email_norm === 'moi101@example.com'));
+  const again = await H.invoke(H.F('apply'), { body: applyBody({ job_slug: jobB.slug, email: 'an.nguyen@example.com', phone_number: '0912345678' }), headers: ip(52) });
+  assert.strictEqual(again.status, 200, 'ứng viên đã có trong kho vẫn nộp được: ' + JSON.stringify(again.json));
+  await admin('recruiters.update', { id: recB.id, plan_months: 1 });
+  assert.strictEqual((await b('candidates.save', { full_name: 'Người thứ 101' })).candidate.full_name, 'Người thứ 101');
+  H.fake.t.lh_candidates = H.fake.t.lh_candidates.filter(c => !String(c.id).startsWith('fill-'));
+});
+
 (async () => {
   let pass = 0, fail = 0;
   for (const t of tests) {

@@ -13,7 +13,7 @@
   var S = {
     jobs: [], cands: [], apps: [], stages: [], ST: {}, tab: 'overview', open: null,
     f: { q: '', tech: [], dom: [], minY: '', openOnly: false, sort: 'new', techLimit: 12, domLimit: 8 },
-    pjob: '', pollN: 0, pollT: null, unread: 0, threads: [], me: null, viewing: null, as: store('lh_as'), recs: [],
+    pjob: '', pollN: 0, pollT: null, unread: 0, threads: [], plan: null, me: null, viewing: null, as: store('lh_as'), recs: [],
   };
   function store(k, v) { try { if (v === undefined) return sessionStorage.getItem(k) || ''; if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch (e) {} return v || ''; }
   var VIEWS = {};
@@ -171,7 +171,7 @@
     api('bootstrap').then(function (b) {
       return Promise.all([api('candidates.list'), api('apps.list')]).then(function (l) { return [b, l[0], l[1]]; });
     }).then(function (r) {
-      S.me = r[0].me; S.viewing = r[0].viewing;
+      S.me = r[0].me; S.viewing = r[0].viewing; S.plan = r[0].plan;
       S.jobs = r[0].jobs; S.unread = r[0].unread_threads || 0; S.stages = r[0].stages; S.ST = {}; S.stages.forEach(function (s) { S.ST[s.key] = s; });
       S.cands = r[1].candidates.map(prep); S.apps = r[2].applications;
       $('#login').classList.add('hide'); $('#app').classList.remove('hide');
@@ -209,6 +209,19 @@
     var main = $('.main'); if (main) main.insertBefore(bar, main.firstChild);
   }
 
+  /* ---------- gói Free / Pro ---------- */
+  function vnd(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + 'đ'; }
+  function planBox() {
+    var p = S.plan; if (!p) return '';
+    var u = p.usage, L = p.limits, bar = function (n, max, label) { return '<div class="use"><span>' + label + '</span><b class="num">' + n + (p.pro ? '' : ' / ' + max) + '</b></div>'; };
+    var until = p.plan_until ? new Date(p.plan_until).toLocaleDateString('vi-VN') : '';
+    var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">đến ' + esc(until) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
+    var up = p.pro ? '' : '<div class="plan-up"><div><b>Nâng cấp Pro: ' + vnd(p.price.month) + '/tháng</b> <s class="muted">' + vnd(p.price.month_list) + '</s> · hoặc <b>' + vnd(p.price.year) + '/năm</b> (tiết kiệm ' + vnd(p.price.month * 12 - p.price.year) + ')</div>' +
+      '<div class="muted">Pro mở: job và ứng viên không giới hạn, AI đọc CV không giới hạn, chấm điểm AI hàng loạt, viết JD bằng AI, báo cáo ngày/tuần/quý/năm + CSV, Telegram, bỏ chữ "Powered by Luna", logo và ảnh bìa.</div>' +
+      '<div class="payinfo">' + (p.payment_info ? esc(p.payment_info) : 'Liên hệ quản trị viên để nâng cấp, sau khi chuyển khoản tài khoản sẽ được nâng ngay.') + '</div></div>';
+    return '<section class="box planbox"><h2>Gói của bạn ' + head + '</h2><div class="uses">' + bar(u.jobs, L.jobs, 'Job đang mở') + bar(u.candidates, L.candidates, 'Ứng viên') + bar(u.ai, L.ai_month, 'Lượt AI đọc CV tháng này') + '</div>' + up + '</section>';
+  }
+
   /* ---------- cài đặt hồ sơ công khai ---------- */
   var KINDS = { linkedin: 1, facebook: 1, zalo: 1 };
   function commText(list) { return (list || []).map(function (c) { return [c.kind, c.name, c.note, c.url].join(' | '); }).join('\n'); }
@@ -221,7 +234,7 @@
   VIEWS.settings = function () {
     var m = S.me, url = location.origin + '/' + m.handle;
     var f = function (id, label, val, extra, help) { return '<div class="field"><label for="' + id + '">' + label + '</label><input class="i2" id="' + id + '" value="' + esc(val || '') + '" ' + (extra || '') + '>' + (help ? '<div class="help">' + help + '</div>' : '') + '</div>'; };
-    $('#view').innerHTML = '<div class="ph"><h1>Cài đặt</h1></div>' +
+    $('#view').innerHTML = '<div class="ph"><h1>Cài đặt</h1></div>' + planBox() +
       (S.viewing ? '<div class="alert err" style="margin-bottom:14px">Đây là hồ sơ của chính bạn, không phải của ' + esc(S.viewing.display_name) + '.</div>' : '') +
       '<form id="pf" class="box setgrid" novalidate>' +
       '<h2>Trang công khai của bạn</h2><div class="setrow"><div class="pubu"><a href="' + esc('/' + m.handle) + '" target="_blank" rel="noopener">' + esc(url) + '</a> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(url) + '">Chép link</button></div></div>' +
@@ -230,9 +243,10 @@
       '<div class="setrow two">' + f('p-cemail', 'Email liên hệ công khai', m.contact_email, 'type="email"', 'Hiện ở chân trang và dùng làm địa chỉ trả lời email cho ứng viên.') + f('p-zalo', 'Link Zalo', m.zalo, 'placeholder="https://zalo.me/..."') + '</div>' +
       '<div class="setrow two">' + f('p-fb', 'Link Facebook', m.facebook, 'placeholder="https://facebook.com/..."') + f('p-in', 'Link LinkedIn', m.linkedin, 'placeholder="https://linkedin.com/in/..."') + '</div>' +
       '<div class="setrow">' + f('p-tg', 'Link Telegram', m.telegram, 'placeholder="https://t.me/..."') + '</div>' +
+      '<div class="setrow two">' + f('p-logo', 'Logo trang riêng (link ảnh https) · Pro', m.logo_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + f('p-cover', 'Ảnh bìa (link ảnh https) · Pro', m.cover_url, (S.me.pro ? '' : 'disabled ') + 'placeholder="https://..."') + '</div>' +
       '<div class="setrow"><div class="field"><label for="p-comm">Cộng đồng bạn quản lý hoặc giới thiệu</label><textarea class="i2" id="p-comm" rows="5" placeholder="facebook | Tên nhóm | Nhóm Facebook | https://facebook.com/groups/...">' + esc(commText(m.communities)) + '</textarea><div class="help">Mỗi dòng một nhóm: loại (facebook, linkedin, zalo) | tên | ghi chú | link https.</div></div></div>' +
       '<h2>Thông báo hồ sơ mới</h2>' +
-      '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', 'Nhắn /start cho bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
+      '<div class="setrow two">' + f('p-nemail', 'Email nhận thông báo', m.notify_email, 'type="email"', 'Để trống thì dùng email đăng nhập (' + esc(m.email) + ').') + f('p-chat', 'Telegram chat id', m.telegram_chat_id, 'inputmode="numeric" placeholder="Ví dụ: 123456789"', 'Chỉ có ở gói Pro. Nhắn bot @userinfobot để biết chat id của bạn, rồi nhắn /start cho bot Luna của site này để nhận thông báo.') + '</div>' +
       '<div class="setrow"><button class="b pri" type="submit" id="psave">Lưu thay đổi</button></div></form>';
     $('#pf').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -241,6 +255,7 @@
         display_name: $('#p-name').value, title: $('#p-title').value, bio: $('#p-bio').value, contact_email: $('#p-cemail').value, zalo: $('#p-zalo').value,
         facebook: $('#p-fb').value, linkedin: $('#p-in').value, telegram: $('#p-tg').value, communities: parseComm($('#p-comm').value),
         notify_email: $('#p-nemail').value, telegram_chat_id: $('#p-chat').value,
+        logo_url: $('#p-logo').value, cover_url: $('#p-cover').value,
       }).then(function (r) { S.me = r.me; toast('Đã lưu'); }).catch(fail).then(function () { btn.disabled = false; });
     });
   };
@@ -252,6 +267,8 @@
     $('#view').innerHTML = '<div class="ph"><h1>Recruiter</h1></div><div class="box" id="reclist"><div class="none">Đang tải…</div></div>';
     api('recruiters.list').then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
   };
+  function isProRec(r) { return r.plan_until && new Date(r.plan_until).getTime() > Date.now(); }
+  function planTag(r) { return isProRec(r) ? ' <span class="badge ok">Pro đến ' + esc(new Date(r.plan_until).toLocaleDateString('vi-VN')) + '</span>' : ' <span class="badge">Free</span>'; }
   function paintRecs() {
     var box = $('#reclist'); if (!box || S.tab !== 'recruiters') return;
     var order = { pending: 0, active: 1, suspended: 2 };
@@ -263,8 +280,9 @@
       if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="suspended">Khoá</button>';
       if (r.status === 'suspended') btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="status" data-v="active">Mở khoá</button>';
       if (r.status === 'active' && !self) btns += '<button class="b sm" type="button" data-act="rec-set" data-id="' + r.id + '" data-k="role" data-v="' + (r.role === 'admin' ? 'recruiter' : 'admin') + '">' + (r.role === 'admin' ? 'Hạ xuống recruiter' : 'Cấp quyền admin') + '</button>';
+      if (r.status === 'active' && r.role !== 'admin') btns += '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="1">+1 tháng Pro</button><button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="12">+1 năm Pro</button>' + (isProRec(r) ? '<button class="b sm" type="button" data-act="rec-plan" data-id="' + r.id + '" data-m="0">Về Free</button>' : '');
       if (r.status !== 'pending' && r.id !== S.me.id) btns += '<button class="b sm" type="button" data-act="rec-view" data-id="' + r.id + '">Xem dữ liệu</button>';
-      return '<div class="li rec"><div class="tx"><div class="t1">' + esc(r.display_name) + ' <span class="badge ' + st[1] + '">' + st[0] + '</span>' + (r.role === 'admin' ? ' <span class="badge dup">Admin</span>' : '') + '</div>' +
+      return '<div class="li rec"><div class="tx"><div class="t1">' + esc(r.display_name) + ' <span class="badge ' + st[1] + '">' + st[0] + '</span>' + (r.role === 'admin' ? ' <span class="badge dup">Admin</span>' : planTag(r)) + '</div>' +
         '<div class="t2">' + esc(r.email) + ' · <a href="/' + esc(r.handle) + '" target="_blank" rel="noopener">/' + esc(r.handle) + '</a></div>' +
         '<div class="t2">' + r.jobs + ' job · ' + r.candidates + ' ứng viên · ' + r.apps + ' hồ sơ · ' + (r.last_login_at ? 'đăng nhập ' + ago(r.last_login_at) + ' trước' : 'chưa đăng nhập') + '</div></div><div class="recb">' + btns + '</div></div>';
     }).join('') || '<div class="none">Chưa có recruiter nào.</div>';
@@ -534,11 +552,13 @@
   }
   VIEWS.report = function () {
     if (!S.rep) S.rep = Object.assign({ preset: 'quarter', data: null, busy: false }, repRange('quarter'));
+    if (!isPro()) S.rep.group = 'month';
     paintReport();
     if (!S.rep.data) loadReport();
   };
+  function isPro() { return !!(S.me && S.me.pro); }
   function loadReport() {
-    var r = S.rep; r.busy = true; paintReport();
+    var r = S.rep; if (!isPro()) r.group = 'month'; r.busy = true; paintReport();
     api('report.get', { from: r.from, to: r.to, group: r.group }).then(function (d) { r.data = d; r.busy = false; paintReport(); }).catch(function (e) { r.busy = false; paintReport(); fail(e); });
   }
   function paintReport() {
@@ -548,7 +568,7 @@
       return '<button type="button" class="' + (r.preset === p[0] ? 'on' : '') + '" data-act="rpreset" data-id="' + p[0] + '">' + p[1] + '</button>';
     }).join('') + '</div>' +
       '<label class="rl">Từ <input class="i2" type="date" id="rfrom" value="' + esc(r.from) + '"></label><label class="rl">đến <input class="i2" type="date" id="rto" value="' + esc(r.to) + '"></label>' +
-      '<label class="rl">Xem theo <select class="i2" id="rgroup" style="width:auto">' + G.map(function (g) { return '<option value="' + g[0] + '"' + (r.group === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="rl">Xem theo <select class="i2" id="rgroup" style="width:auto"' + (isPro() ? '' : ' disabled title="Gói Free chỉ xem theo tháng"') + '>' + G.map(function (g) { return '<option value="' + g[0] + '"' + (r.group === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select></label>' +
       '<span class="sp"></span><button class="b" type="button" data-act="rcsv"' + (d ? '' : ' disabled') + '>Tải CSV</button></div>';
     var body = '';
     if (!d) body = '<div class="box"><div class="none">' + (r.busy ? 'Đang tính báo cáo…' : 'Chưa có dữ liệu.') + '</div></div>';
@@ -794,10 +814,15 @@
     if (t.hasAttribute('data-dom') && !act) { var d = t.getAttribute('data-dom'), j = S.f.dom.indexOf(d); if (j >= 0) S.f.dom.splice(j, 1); else S.f.dom.push(d); return paintCands(); }
     switch (act) {
       case 'rpreset': { var pv = id; S.rep.preset = pv; if (pv !== 'custom') Object.assign(S.rep, repRange(pv)); S.rep.data = null; return pv === 'custom' ? paintReport() : loadReport(); }
-      case 'rcsv': return repCsv();
+      case 'rcsv': if (!isPro()) return toast('Xuất CSV và xem theo ngày/tuần/quý/năm chỉ có ở gói Pro. Xem mục Cài đặt để nâng cấp.', true); return repCsv();
       case 'logout': return logout();
       case 'copy-url': return copy(t.getAttribute('data-v'), t);
       case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
+      case 'rec-plan': {
+        var mo = Number(t.getAttribute('data-m'));
+        if (mo === 0 && !confirm('Đưa tài khoản này về gói Free ngay?')) return;
+        return api('recruiters.update', { id: id, plan_months: mo }).then(function () { toast(mo ? 'Đã cộng ' + mo + ' tháng Pro' : 'Đã về gói Free'); return api('recruiters.list'); }).then(function (r) { S.recs = r.recruiters; paintRecs(); }).catch(fail);
+      }
       case 'rec-view': S.as = id; store('lh_as', id); location.hash = '#/overview'; return boot();
       case 'rec-set': {
         var k = t.getAttribute('data-k'), v2 = t.getAttribute('data-v'), pay = { id: id };

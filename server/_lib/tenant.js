@@ -7,6 +7,7 @@ const { sb, must } = require('./db');
 const A = require('./auth');
 const { HttpError, clean } = require('./util');
 const OWNER = require('./owner-defaults');
+const PLAN = require('./plan');
 
 const COOKIE_DAYS = A.DAYS;
 const TABLES = ['lh_jobs', 'lh_candidates', 'lh_applications', 'lh_activities', 'lh_threads'];
@@ -29,6 +30,7 @@ const PUBLIC_COLS = 'handle,display_name,title,bio,contact_email,zalo,facebook,l
 const publicProfile = (r) => r && ({
   handle: r.handle, is_default: !!r.email_norm && r.email_norm === ownerEmail(), display_name: r.display_name, title: r.title, bio: r.bio, contact_email: r.contact_email,
   zalo: r.zalo, facebook: r.facebook, linkedin: r.linkedin, telegram: r.telegram, communities: Array.isArray(r.communities) ? r.communities : [],
+  pro: PLAN.isPro(r), logo_url: PLAN.isPro(r) ? r.logo_url || '' : '', cover_url: PLAN.isPro(r) ? r.cover_url || '' : '',
 });
 
 async function byId(id) { return id ? must(await sb().from('lh_recruiters').select('*').eq('id', id).maybeSingle(), 'recruiter') : null; }
@@ -103,13 +105,15 @@ const selfView = (r) => ({
   id: r.id, email: r.email, role: r.role, status: r.status, handle: r.handle, display_name: r.display_name, title: r.title, bio: r.bio,
   contact_email: r.contact_email, zalo: r.zalo, facebook: r.facebook, linkedin: r.linkedin, telegram: r.telegram,
   communities: Array.isArray(r.communities) ? r.communities : [], telegram_chat_id: r.telegram_chat_id, notify_email: r.notify_email,
+  logo_url: r.logo_url || '', cover_url: r.cover_url || '', pro: PLAN.isPro(r), plan_until: r.plan_until || null,
 });
 
 /** Đích nhận thông báo và địa chỉ trả lời của một recruiter (rec có thể null với dữ liệu cũ). */
 function notifyTarget(rec) {
   const owner = !rec || (rec.email_norm || String(rec.email || '').toLowerCase()) === ownerEmail();
   return {
-    chat: (rec && rec.telegram_chat_id) || (owner ? process.env.TELEGRAM_CHAT_ID : '') || '',
+    // Telegram là quyền lợi gói Pro (tài khoản chủ luôn có)
+    chat: (rec && rec.telegram_chat_id && PLAN.isPro(rec) ? rec.telegram_chat_id : '') || (owner ? process.env.TELEGRAM_CHAT_ID : '') || '',
     to: (rec && rec.notify_email) || (owner && process.env.ADMIN_NOTIFY_EMAIL) || (rec && rec.email) || '',
     replyTo: (rec && (rec.contact_email || rec.email)) || process.env.MAIL_REPLY_TO || '',
     name: (rec && rec.display_name) || '',
@@ -117,14 +121,14 @@ function notifyTarget(rec) {
   };
 }
 
-const PROFILE_TEXT = { display_name: 60, title: 80, bio: 400, contact_email: 120, zalo: 200, facebook: 200, linkedin: 200, telegram: 200, notify_email: 120 };
+const PROFILE_TEXT = { logo_url: 300, cover_url: 300, display_name: 60, title: 80, bio: 400, contact_email: 120, zalo: 200, facebook: 200, linkedin: 200, telegram: 200, notify_email: 120 };
 const isUrl = v => /^https:\/\/[^\s"'<>]+$/.test(v);
 
 /** Làm sạch dữ liệu hồ sơ công khai (link phải là https để không chèn được javascript:). */
 function profilePatch(b) {
   const o = {};
   for (const [k, max] of Object.entries(PROFILE_TEXT)) if (b[k] !== undefined) o[k] = clean(b[k], max);
-  for (const k of ['zalo', 'facebook', 'linkedin', 'telegram']) if (o[k] && !isUrl(o[k])) throw new HttpError(400, `Link ${k} phải bắt đầu bằng https://`);
+  for (const k of ['zalo', 'facebook', 'linkedin', 'telegram', 'logo_url', 'cover_url']) if (o[k] && !isUrl(o[k])) throw new HttpError(400, `Link ${k} phải bắt đầu bằng https://`);
   for (const k of ['contact_email', 'notify_email']) if (o[k] && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(o[k])) throw new HttpError(400, 'Email chưa đúng định dạng.');
   if (b.telegram_chat_id !== undefined) {
     const v = clean(b.telegram_chat_id, 30);

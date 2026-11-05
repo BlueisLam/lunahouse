@@ -3,6 +3,7 @@ const { sb, must, BUCKET } = require('./_lib/db');
 const U = require('./_lib/util');
 const N = require('./_lib/notify');
 const T = require('./_lib/tenant');
+const PLAN = require('./_lib/plan');
 
 const MAX_CV_BYTES = 4 * 1024 * 1024;     // 4MB
 const MAX_PER_IP_HOUR = 5;
@@ -105,6 +106,7 @@ exports.handler = U.wrap(async (event) => {
   if (cand) {
     cand = must(await db.from('lh_candidates').update(contact).eq('id', cand.id).select().single(), 'update candidate');
   } else {
+    if (!(await PLAN.candidateRoom(rec, rid))) throw new U.HttpError(503, 'Nhà tuyển dụng này tạm thời chưa nhận thêm hồ sơ qua trang. Bạn thử liên hệ trực tiếp qua Zalo hoặc email ở chân trang nhé.');
     cand = must(await db.from('lh_candidates').insert({ ...contact, source: 'apply', recruiter_id: rid }).select().single(), 'insert candidate');
   }
 

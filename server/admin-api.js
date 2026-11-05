@@ -2,6 +2,7 @@
 const { sb, must, BUCKET } = require('./_lib/db');
 const U = require('./_lib/util');
 const T = require('./_lib/tenant');
+const PLAN = require('./_lib/plan');
 const { STAGES, isStatus, TERMINAL } = require('./_lib/status');
 const { stage1 } = require('./_lib/match');
 const { parseCandidate } = require('./_lib/parse');
@@ -107,7 +108,7 @@ A.bootstrap = async (b) => {
   } catch (e) { unread = 0; }
   const viewing = b._rid === b._rec.id ? null : await T.byId(b._rid);
   return {
-    jobs, stages: STAGES, terminal: TERMINAL, unread_threads: unread, me: T.selfView(b._rec),
+    jobs, stages: STAGES, terminal: TERMINAL, unread_threads: unread, me: T.selfView(b._rec), plan: await PLAN.summary(b._rec, b._rec.id),
     viewing: viewing ? { id: viewing.id, display_name: viewing.display_name, email: viewing.email, handle: viewing.handle } : null,
   };
 };
@@ -133,6 +134,7 @@ A['candidates.save'] = async (b) => {
   const patch = candPatch(b);
   if (!b.id) {
     if (!patch.full_name) throw new U.HttpError(400, 'Cần có họ tên.');
+    await PLAN.checkCandidates(b._rec, b._rid);
     return { candidate: must(await sb().from('lh_candidates').insert({ ...patch, source: 'admin', recruiter_id: b._rid }).select().single(), 'insert') };
   }
   await own('lh_candidates', b.id, b._rid, 'id');
@@ -151,6 +153,7 @@ A['candidates.delete'] = async (b) => {
 A['candidates.upload'] = async (b) => {
   const buffer = b.file && b.file.buffer;
   if (!buffer || !buffer.length) throw new U.HttpError(400, 'File rỗng.');
+  await PLAN.checkCandidates(b._rec, b._rid);
   if (buffer.length > MAX_CV_BYTES) throw new U.HttpError(413, 'File lớn hơn 4MB.');
   const kind = U.sniffFile(buffer);
   if (!kind) throw new U.HttpError(400, 'Chỉ nhận PDF, DOCX, JPG, PNG.');
@@ -175,6 +178,7 @@ A['candidates.reparse'] = async (b) => {
 A['candidates.parse'] = async (b) => {
   if (!b.id) throw new U.HttpError(400, 'Thiếu id.');
   await own('lh_candidates', b.id, b._rid, 'id');
+  await PLAN.useAi(b._rec);
   return await parseCandidate(b.id, { text: U.clean(b.text, 40000), images: b.images });
 };
 
@@ -215,6 +219,7 @@ A['jobs.save'] = async (b) => {
   const patch = jobPatch(b);
   if (!b.id) {
     if (!patch.title) throw new U.HttpError(400, 'Cần có tên vị trí.');
+    if (patch.status === 'open') await PLAN.checkOpenJob(b._rec, b._rid);
     let slug = U.slugify(patch.title);
     for (let i = 0; i < 5; i++) {
       const hit = must(await db.from('lh_jobs').select('id').eq('slug', slug).limit(1), 'slug')[0]; // slug là duy nhất toàn site
@@ -223,7 +228,8 @@ A['jobs.save'] = async (b) => {
     }
     return { job: must(await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(), 'insert job') };
   }
-  await own('lh_jobs', b.id, b._rid, 'id');
+  const curJob = await own('lh_jobs', b.id, b._rid, 'id,status');
+  if (patch.status === 'open' && curJob.status !== 'open') await PLAN.checkOpenJob(b._rec, b._rid);
   return { job: must(await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(), 'update job') };
 };
 
@@ -237,6 +243,7 @@ A['jobs.delete'] = async (b) => {
 };
 
 A['jobs.fromText'] = async (b) => {
+  PLAN.needPro(b._rec, 'Viết JD bằng AI');
   const text = U.clean(b.text, 12000);
   if (text.length < 40) throw new U.HttpError(400, 'Dán nội dung JD dài hơn một chút nhé.');
   const lang = b.lang === 'en' ? 'en' : 'vi';
@@ -270,7 +277,7 @@ A['report.get'] = async (b) => {
   let from = R.isDay(b.from) ? b.from : today.slice(0, 4) + '-01-01', to = R.isDay(b.to) ? b.to : today;
   if (from > to) [from, to] = [to, from];
   if ((Date.parse(to) - Date.parse(from)) / 86400e3 > 366 * 5) throw new U.HttpError(400, 'Khoảng thời gian tối đa 5 năm.');
-  const group = R.GROUPS.includes(b.group) ? b.group : 'month';
+  const group = PLAN.isPro(b._rec) && R.GROUPS.includes(b.group) ? b.group : 'month'; // gói Free chỉ xem theo tháng
   if (group === 'day' && (Date.parse(to) - Date.parse(from)) / 86400e3 > 400) throw new U.HttpError(400, 'Xem theo ngày tối đa khoảng 13 tháng. Chọn xem theo tháng hoặc quý.');
   const db = sb();
   const all = async (mk) => { const out = []; for (let p = 0; p < 30; p++) { const r = must(await mk().range(p * 1000, p * 1000 + 999), 'report'); out.push(...r); if (r.length < 1000) break; } return out; };
@@ -360,6 +367,7 @@ A['match.stage1'] = async (b) => {
 
 A['match.score'] = async (b) => {
   const db = sb();
+  PLAN.needPro(b._rec, 'Chấm điểm AI hàng loạt');
   const ids = (Array.isArray(b.ids) ? b.ids : []).slice(0, SCORE_BATCH_MAX);
   if (!ids.length) return { results: [] };
   const job = await own('lh_jobs', b.job_id, b._rid);
@@ -424,6 +432,7 @@ A['threads.delete'] = async (b) => {
 A['profile.save'] = async (b) => {
   const rec = b._rec; // chỉ sửa hồ sơ của chính mình
   const patch = T.profilePatch(b);
+  if ((patch.logo_url || patch.cover_url) && !PLAN.isPro(rec)) throw PLAN.upgrade('Logo và ảnh bìa trang riêng chỉ có ở gói Pro.');
   const row = Object.keys(patch).length ? must(await sb().from('lh_recruiters').update(patch).eq('id', rec.id).select().single(), 'profile') : rec;
   return { me: T.selfView(row) };
 };
@@ -431,7 +440,7 @@ A['profile.save'] = async (b) => {
 A['recruiters.list'] = async (b) => {
   needAdmin(b);
   const db = sb();
-  const rows = must(await db.from('lh_recruiters').select('id,email,handle,display_name,role,status,created_at,last_login_at').order('created_at', { ascending: false }).limit(300), 'recruiters');
+  const rows = must(await db.from('lh_recruiters').select('id,email,handle,display_name,role,status,plan_until,created_at,last_login_at').order('created_at', { ascending: false }).limit(300), 'recruiters');
   const count = async (t, id) => (await db.from(t).select('id', { count: 'exact', head: true }).eq('recruiter_id', id)).count || 0;
   const out = await Promise.all(rows.map(async r => ({ ...r, jobs: await count('lh_jobs', r.id), candidates: await count('lh_candidates', r.id), apps: await count('lh_applications', r.id) })));
   return { recruiters: out };
@@ -457,10 +466,24 @@ A['recruiters.update'] = async (b) => {
     if (hit && hit.id !== t.id) throw new U.HttpError(409, 'Đường dẫn này đã có người dùng.');
     patch.handle = h;
   }
+  // Gói: plan_months > 0 cộng thêm tháng vào hạn Pro (tính từ hạn hiện tại nếu còn); 0 = về Free ngay.
+  if (b.plan_months !== undefined) {
+    const m = Math.floor(Number(b.plan_months));
+    if (!(m >= 0 && m <= 36)) throw new U.HttpError(400, 'Số tháng không hợp lệ.');
+    if (m === 0) patch.plan_until = null;
+    else {
+      const base = Math.max(Date.now(), t.plan_until ? new Date(t.plan_until).getTime() : 0), d = new Date(base);
+      d.setUTCMonth(d.getUTCMonth() + m);
+      patch.plan_until = d.toISOString();
+    }
+  }
+  // Duyệt lần đầu: tặng Pro dùng thử
+  const firstApproval = patch.status === 'active' && t.status === 'pending' && !t.plan_until;
+  if (firstApproval && patch.plan_until === undefined) patch.plan_until = new Date(Date.now() + PLAN.TRIAL_DAYS * 86400e3).toISOString();
   if (!Object.keys(patch).length) return { recruiter: t };
   const row = must(await sb().from('lh_recruiters').update(patch).eq('id', t.id).select().single(), 'update recruiter');
   if (patch.status === 'active' && t.status !== 'active') await N.settle([N.emailRecruiterApproved(row, b._base)]);
-  return { recruiter: { id: row.id, status: row.status, role: row.role, handle: row.handle } };
+  return { recruiter: { id: row.id, status: row.status, role: row.role, handle: row.handle, plan_until: row.plan_until } };
 };
 
 // ---------- handler ----------

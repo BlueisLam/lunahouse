@@ -318,3 +318,7 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 :root[data-theme="dark"] { color-scheme: dark; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
 .top .wrap { align-items: center; }
+
+/* Gói Pro: logo và ảnh bìa trang riêng */
+.plogo { height: 28px; width: auto; max-width: 120px; object-fit: contain; border-radius: 6px; }
+.hero.has-cover { background-size: cover; background-position: center; border-radius: 18px; padding: 40px 24px 28px; margin-top: 12px; }

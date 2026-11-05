@@ -9,7 +9,7 @@ const DEFAULTS = {
   lh_activities: () => ({ type: 'note', note: '', meta: {} }),
   lh_threads: () => ({ is_public: false, unread_admin: true, last_from: 'candidate' }),
   lh_messages: () => ({ ip_hash: '' }),
-  lh_recruiters: () => ({ auth_id: null, display_name: '', title: '', bio: '', contact_email: '', zalo: '', facebook: '', linkedin: '', telegram: '', communities: [], role: 'recruiter', status: 'pending', telegram_chat_id: '', notify_email: '', ip_hash: '', last_login_at: null }),
+  lh_recruiters: () => ({ auth_id: null, display_name: '', title: '', bio: '', contact_email: '', zalo: '', facebook: '', linkedin: '', telegram: '', communities: [], role: 'recruiter', status: 'pending', telegram_chat_id: '', notify_email: '', ip_hash: '', last_login_at: null, plan_until: null, ai_month: '', ai_count: 0, logo_url: '', cover_url: '' }),
 };
 
 function derive(table, row) {

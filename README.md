@@ -106,3 +106,19 @@ Ai cũng tự đăng ký tại `/admin/` → "Tạo tài khoản recruiter". Tà
 2. Chạy `supabase/migrations/2026-11-nhieu-recruiter.sql` trong SQL Editor (môi trường dev: thay `lh_` bằng `lhdev_`). Chỉ thêm bảng/cột.
 3. Cloudflare: đặt `ADMIN_EMAIL` (và kiểm tra `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`), Retry deployment.
 4. Mở trang chủ một lần hoặc đăng nhập bằng `ADMIN_EMAIL` + `ADMIN_PASSWORD` để dữ liệu cũ được gán cho tài khoản chủ.
+
+## Gói Free / Pro
+Chỉnh giá và hạn mức trong `server/_lib/plan.js`. Thu tiền thủ công: recruiter chuyển khoản, admin bấm **+1 tháng / +1 năm Pro** trong tab Recruiter (cộng dồn vào hạn còn lại, **Về Free** để thu hồi). Thông tin chuyển khoản hiển thị ở Cài đặt, đặt bằng biến `PAYMENT_INFO` ở Cloudflare (xuống dòng được).
+
+| | Free | Pro (99.000đ/tháng, giá gốc 199.000đ; 990.000đ/năm) |
+|---|---|---|
+| Job đang mở / ứng viên | 3 / 100 | không giới hạn |
+| AI đọc CV | 30 lượt/tháng | không giới hạn |
+| Chấm điểm AI hàng loạt, viết JD bằng AI | không | có |
+| Báo cáo | chỉ theo tháng, không CSV | ngày/tuần/quý/năm + CSV |
+| Thông báo | email | email + Telegram |
+| Trang riêng | chân trang "Powered by Luna" | bỏ chân trang, logo + ảnh bìa (link https) |
+
+Người mới được **tặng 30 ngày Pro** ngay lần đầu admin duyệt. Admin tổng luôn dùng đủ tính năng. Hết hạn thì tự về Free, không mất dữ liệu (chỉ không thêm được khi vượt hạn mức). Khi kho đã đủ 100 ứng viên, ứng viên mới nộp qua trang sẽ thấy thông báo "tạm thời chưa nhận thêm hồ sơ"; ứng viên đã có trong kho vẫn nộp lại được.
+
+Nâng cấp từ bản trước: chạy thêm `supabase/migrations/2026-11-goi-pro.sql` (dev: thay `lh_` bằng `lhdev_`).
