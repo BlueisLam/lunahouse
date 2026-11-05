@@ -12,6 +12,10 @@
 /assets/*
   Cache-Control: public, max-age=300
 
+/manifest.webmanifest
+  Content-Type: application/manifest+json
+  Cache-Control: public, max-age=3600
+
 # Bản xem thử (pages.dev) không cho Google lập chỉ mục
 https://:project.pages.dev/*
   X-Robots-Tag: noindex

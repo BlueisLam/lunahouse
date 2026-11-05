@@ -299,3 +299,26 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 .li.rep .repm { flex: 1 1 320px; display: grid; gap: 4px; }
 .li.rep .reptx { white-space: pre-wrap; word-break: break-word; }
 .li.rep .recb { display: flex; gap: 6px; margin-left: auto; }
+
+/* ---------- Tối ưu điện thoại ---------- */
+@media (max-width: 900px) {
+  /* Thanh điều hướng dưới: cuộn ngang, mỗi mục đủ rộng để chạm, mục đang chọn tự cuộn vào giữa */
+  .tabbar { overflow-x: auto; overflow-y: hidden; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .tabbar::-webkit-scrollbar { display: none; }
+  .tabbar a { flex: 0 0 auto; min-width: 68px; padding: 10px 6px 9px; scroll-snap-align: center; white-space: nowrap; }
+  .tabbar a.on { box-shadow: inset 0 3px 0 var(--accent); }
+  /* Ô nhập từ 16px để iPhone không tự phóng to khi chạm vào */
+  input, select, textarea, .i2 { font-size: 16px; }
+  /* Vùng chạm tối thiểu 40px */
+  .b, .seg button, .mtop .b, .mtop .theme-btn { min-height: 40px; }
+  .b.sm { padding-top: 9px; padding-bottom: 9px; }
+  .seg button { padding: 10px 14px; }
+  .mtop .theme-btn { min-width: 40px; }
+  .pubu .b { min-height: 40px; }
+  .rep-ctl .rl .i2 { min-height: 40px; }
+  .lnk a { display: inline-block; padding: 10px 2px; }
+  .main { padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* Chỉ báo kéo để tải lại (dùng khi ghim ra màn hình chính iPhone) */
+.ptr { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 6px); transform: translate(-50%, -40px); opacity: 0; z-index: 60; pointer-events: none; background: var(--ink, #17143a); color: #fff; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 99px; box-shadow: 0 6px 18px rgba(0,0,0,.25); transition: opacity .12s; white-space: nowrap; }

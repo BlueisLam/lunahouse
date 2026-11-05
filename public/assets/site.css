@@ -325,3 +325,14 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 
 /* ---------- Link đăng ký recruiter ở chân trang ---------- */
 .foot a.reg-link { color: var(--accent); font-weight: 700; }
+
+/* ---------- Tối ưu điện thoại ---------- */
+@media (max-width: 720px) {
+  input, select, textarea { font-size: 16px; }
+  .btn, .nav a, button { min-height: 44px; }
+  .nav a { display: inline-flex; align-items: center; padding: 8px 12px; }
+  .foot .wrap { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .foot .wrap > a { display: inline-block; padding: 8px 0; }
+  .foot .sp { margin-left: 0; display: flex; flex-wrap: wrap; gap: 0 14px; }
+  .foot .sp a { display: inline-block; padding: 8px 0; }
+}

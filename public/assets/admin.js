@@ -191,7 +191,7 @@
     var tabs = navList().map(function (n) { return '<a data-nav="' + n[0] + '" href="#/' + n[0] + '"><i>' + n[2] + '</i>' + n[1] + '</a>'; }).join('');
     $('#app').innerHTML = '<div class="shell"><aside class="rail"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a>' + rail +
       '<span class="sp"></span><button class="nv" data-theme-toggle type="button"><span class="i">◐</span>Sáng / tối</button><a class="nv" href="' + pubUrl() + '" target="_blank" rel="noopener"><span class="i">↗</span>Trang công khai</a><button class="nv" data-act="logout" type="button"><span class="i">⎋</span>Đăng xuất</button></aside>' +
-      '<main class="main"><div class="mtop"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a><span class="sp"></span>' + '<button class="theme-btn" type="button" data-theme-toggle aria-label="Đổi giao diện sáng hoặc tối" title="Đổi giao diện sáng / tối"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>' + '<button class="b sm" data-act="logout" type="button">Đăng xuất</button></div><div id="view"></div></main>' +
+      '<main class="main"><div class="mtop"><a class="logo" href="#/overview"><span class="moon" aria-hidden="true"></span>Luna</a><span class="sp"></span>' + '<button class="theme-btn" type="button" data-act="reload" aria-label="Tải lại trang" title="Tải lại">&#8635;</button>' + '<button class="theme-btn" type="button" data-theme-toggle aria-label="Đổi giao diện sáng hoặc tối" title="Đổi giao diện sáng / tối"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg><svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>' + '<button class="b sm" data-act="logout" type="button">Đăng xuất</button></div><div id="view"></div></main>' +
       '<nav class="tabbar" aria-label="Điều hướng">' + tabs + '</nav></div>';
   }
   function renderNav() {
@@ -353,6 +353,7 @@
     var tab = a === 'candidate' ? 'candidates' : a === 'app' ? 'pipeline' : a === 'job' ? 'jobs' : a;
     if (!VIEWS[tab]) tab = 'overview';
     S.tab = tab; closeLayer(true); renderNav(); VIEWS[tab]();
+    try { var on = document.querySelector('.tabbar a.on'); if (on && on.scrollIntoView) on.scrollIntoView({ inline: 'center', block: 'nearest' }); } catch (e) { /* bỏ qua */ }
     if (id) { if (a === 'inbox') openThread(id); else if (a === 'candidate' || a === 'candidates') openCandidate(id); else if (a === 'app') openApp(id); else if (a === 'job' || a === 'jobs') openJob(id); }
   }
   window.addEventListener('hashchange', function () { if ($('#app') && !$('#app').classList.contains('hide')) route(); });
@@ -879,6 +880,7 @@
       case 'as-exit': S.as = ''; store('lh_as', ''); location.hash = '#/overview'; return boot();
       case 'rep-set': return api('reports.update', { id: id, status: t.getAttribute('data-v') }).then(loadReports).catch(fail);
       case 'rep-del': if (!confirm('Xoá báo cáo này?')) return; return api('reports.update', { id: id, delete: true }).then(loadReports).catch(fail);
+      case 'reload': location.reload(); return;
       case 'bill-toggle': {
         var turnOn = !S.billing;
         if (!confirm(turnOn ? 'Bật tính phí? Người dùng Free sẽ bị giới hạn và thấy giá nâng cấp Pro.' : 'Tắt tính phí? Mọi người dùng đủ tính năng, không giới hạn.')) return;
@@ -1010,5 +1012,27 @@
       boot();
     });
   }
+  /* Dùng như ứng dụng trên iPhone (ghim màn hình chính) thì không có nút tải lại: kéo từ đầu trang xuống để tải lại. */
+  (function pullToRefresh() {
+    var standalone = (window.navigator && window.navigator.standalone) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (!standalone) return;
+    var ind = document.createElement('div'); ind.className = 'ptr'; ind.textContent = '\u21BB Kéo xuống để tải lại'; document.body.appendChild(ind);
+    var y0 = null, dy = 0;
+    function reset() { y0 = null; dy = 0; ind.style.opacity = '0'; ind.style.transform = 'translate(-50%, -40px)'; }
+    document.addEventListener('touchstart', function (e) {
+      var t = e.target, blocked = t.closest && t.closest('.drawer, textarea, input, select, .kan, table, .scroll');
+      y0 = (window.scrollY <= 0 && !blocked && e.touches.length === 1) ? e.touches[0].clientY : null; dy = 0;
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 8 || window.scrollY > 0) { ind.style.opacity = '0'; return; }
+      var k = Math.min(dy, 120);
+      ind.style.opacity = String(Math.min(1, k / 80)); ind.style.transform = 'translate(-50%, ' + (k / 2 - 40) + 'px)';
+      ind.textContent = dy > 90 ? '\u21BB Thả để tải lại' : '\u21BB Kéo xuống để tải lại';
+    }, { passive: true });
+    document.addEventListener('touchend', function () { var go = y0 !== null && dy > 90 && window.scrollY <= 0; reset(); if (go) location.reload(); }, { passive: true });
+    document.addEventListener('touchcancel', reset, { passive: true });
+  })();
   init();
 })();
