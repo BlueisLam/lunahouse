@@ -225,13 +225,29 @@
       (p.pay.name ? '<dt>Chủ tài khoản</dt><dd>' + esc(p.pay.name) + '</dd>' : '') + '<dt>Nội dung</dt><dd><b class="num">' + esc(memo) + '</b> <button class="b sm" type="button" data-act="copy-url" data-v="' + esc(memo) + '">Chép</button></dd></dl>' +
       '<div class="muted">Quét bằng app ngân hàng, số tiền và nội dung đã điền sẵn. Chuyển xong tài khoản được nâng Pro, thường trong ngày.</div></div></div>';
   }
+  var PERKS = [
+    ['📌', 'Job đang mở', '3 job', 'Không giới hạn'],
+    ['👥', 'Hồ sơ ứng viên', '100 hồ sơ', 'Không giới hạn'],
+    ['🤖', 'AI đọc CV', '30 lượt / tháng', 'Không giới hạn'],
+    ['🎯', 'Chấm điểm AI hàng loạt', '', 'Có'],
+    ['✍️', 'Viết JD bằng AI', '', 'Có'],
+    ['📊', 'Báo cáo ngày, tuần, quý, năm + xuất CSV', 'Chỉ theo tháng', 'Đầy đủ'],
+    ['🔔', 'Thông báo hồ sơ mới qua Telegram', '', 'Có'],
+    ['🎨', 'Logo và ảnh bìa trang riêng', '', 'Có'],
+    ['✨', 'Bỏ chữ "Powered by Luna"', '', 'Có']
+  ];
+  function perksBox() {
+    return '<div class="perks"><div class="perks-h"><span></span><span>Free</span><span class="pro">Pro</span></div>' + PERKS.map(function (k) {
+      return '<div class="perk"><span class="pn"><i>' + k[0] + '</i>' + esc(k[1]) + '</span><span class="pf">' + (k[2] ? esc(k[2]) : '<em>–</em>') + '</span><span class="pp">✓ ' + esc(k[3]) + '</span></div>';
+    }).join('') + '</div>';
+  }
   function planBox() {
     var p = S.plan; if (!p) return '';
     var u = p.usage, L = p.limits, bar = function (n, max, label) { return '<div class="use"><span>' + label + '</span><b class="num">' + n + (p.pro ? '' : ' / ' + max) + '</b></div>'; };
     var until = p.plan_until ? new Date(p.plan_until).toLocaleDateString('vi-VN') : '';
     var head = p.role_admin ? '<span class="badge ok">Admin · dùng đủ tính năng</span>' : p.pro ? '<span class="badge ok">Gói Pro</span> <span class="muted">đến ' + esc(until) + '</span>' : '<span class="badge warn">Gói Free</span>' + (until ? ' <span class="muted">Pro đã hết hạn ' + esc(until) + '</span>' : '');
     var up = p.pro ? '' : '<div class="plan-up"><div><b>Nâng cấp Pro: ' + vnd(p.price.month) + '/tháng</b> <s class="muted">' + vnd(p.price.month_list) + '</s> · hoặc <b>' + vnd(p.price.year) + '/năm</b> (tiết kiệm ' + vnd(p.price.month * 12 - p.price.year) + ')</div>' +
-      '<div class="muted">Pro mở: job và ứng viên không giới hạn, AI đọc CV không giới hạn, chấm điểm AI hàng loạt, viết JD bằng AI, báo cáo ngày/tuần/quý/năm + CSV, Telegram, bỏ chữ "Powered by Luna", logo và ảnh bìa.</div>' +
+      perksBox() +
       payBox(p) + '<div class="payinfo">' + (p.payment_info ? esc(p.payment_info) : p.pay ? '' : 'Liên hệ quản trị viên để nâng cấp, sau khi chuyển khoản tài khoản sẽ được nâng ngay.') + '</div></div>';
     return '<section class="box planbox"><h2>Gói của bạn ' + head + '</h2><div class="uses">' + bar(u.jobs, L.jobs, 'Job đang mở') + bar(u.candidates, L.candidates, 'Ứng viên') + bar(u.ai, L.ai_month, 'Lượt AI đọc CV tháng này') + '</div>' + up + '</section>';
   }

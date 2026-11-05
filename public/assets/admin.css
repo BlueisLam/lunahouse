@@ -270,6 +270,16 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 .use { flex: 1 1 150px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
 .use b { font-size: 18px; color: var(--ink); }
 .plan-up { margin: 0 16px 16px; padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); display: grid; gap: 6px; font-size: 14px; }
+.perks { background: var(--card, #fff); border-radius: 10px; overflow: hidden; border: 1px solid var(--line); font-size: 14px; }
+.perks-h, .perk { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 8px 12px; align-items: center; }
+.perks-h { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: rgba(0,0,0,.03); }
+.perks-h .pro { color: var(--accent); font-weight: 700; }
+.perk + .perk { border-top: 1px solid var(--line); }
+.perk .pn i { font-style: normal; margin-right: 8px; }
+.perk .pf { color: var(--muted); }
+.perk .pf em { font-style: normal; opacity: .5; }
+.perk .pp { font-weight: 600; color: var(--accent); }
+@media (max-width: 560px) { .perks-h, .perk { grid-template-columns: 1.5fr 1fr 1fr; padding: 8px; font-size: 13px; } }
 .payinfo { white-space: pre-line; font-weight: 600; }
 .payqr { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .payqr img { background: #fff; border-radius: 10px; border: 1px solid var(--line); }
