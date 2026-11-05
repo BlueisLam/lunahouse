@@ -322,3 +322,12 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
 /* Gói Pro: logo và ảnh bìa trang riêng */
 .plogo { height: 28px; width: auto; max-width: 120px; object-fit: contain; border-radius: 6px; }
 .hero.has-cover { background-size: cover; background-position: center; border-radius: 18px; padding: 40px 24px 28px; margin-top: 12px; }
+
+/* ---------- Lời mời đăng ký recruiter (chân trang) ---------- */
+.foot .reg-cta { flex: 1 1 100%; display: flex; gap: 14px 24px; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: 18px 22px; margin-bottom: 14px; border-radius: 16px; background: var(--accent-soft, rgba(79, 70, 229, .08)); border: 1px solid var(--line); }
+.foot .reg-t { display: grid; gap: 2px; color: var(--ink-2); }
+.foot .reg-t b { color: var(--ink); font-size: 17px; }
+.foot a.reg-b { display: inline-flex; align-items: center; gap: 8px; padding: 11px 20px; border-radius: 999px; background: var(--accent); color: var(--on-accent, #fff); font-weight: 700; text-decoration: none; white-space: nowrap; transition: transform .15s, box-shadow .15s; }
+.foot a.reg-b:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(79, 70, 229, .35); }
+.foot a.reg-b:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 560px) { .foot .reg-cta { padding: 16px; } .foot a.reg-b { width: 100%; justify-content: center; } }
