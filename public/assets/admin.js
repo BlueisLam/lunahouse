@@ -745,13 +745,21 @@
   var JLABEL = { open: 'Đang mở', draft: 'Nháp', paused: 'Tạm dừng', closed: 'Đã đóng' };
   var PRIO = { urgent: ['Gấp', 3], high: ['Cao', 2], normal: ['Thường', 1] };
   var PRIO_NEXT = { normal: 'high', high: 'urgent', urgent: 'normal' };
-  var JF = { q: '', status: 'all', loc: '', prio: '', group: 'loc', sort: 'prio', pick: false, sel: {} };
+  var JF = { q: '', status: 'all', loc: '', mode: '', prio: '', group: 'loc', sort: 'prio', pick: false, sel: {} };
   var LOC_MAP = [[/^(ho chi minh|hcm|tp ?hcm|tphcm|hcmc|sai gon|saigon|tp ho chi minh)$/, 'Hồ Chí Minh'], [/^(ha noi|hn|hanoi)$/, 'Hà Nội'], [/^(da nang|dn)$/, 'Đà Nẵng'],
     [/^(remote|wfh|work from home|tu xa|lam viec tu xa)$/, 'Remote'], [/^hybrid$/, 'Hybrid'], [/^(can tho)$/, 'Cần Thơ'], [/^(hai phong)$/, 'Hải Phòng'], [/^(binh duong)$/, 'Bình Dương'], [/^(dong nai)$/, 'Đồng Nai']];
   var NOLOC = 'Chưa ghi địa điểm';
   function plain(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[.]/g, '').replace(/\s+/g, ' ').trim(); }
   /** Tách "Hồ Chí Minh, Hà Nội / Remote" thành các địa điểm chuẩn hoá; một job có thể thuộc nhiều địa điểm. */
+  var MODES = ['Remote', 'Hybrid'], NOCITY = 'Chưa ghi thành phố', REMOTE_ONLY = 'Làm việc từ xa';
+  /** Hình thức làm việc (Remote/Hybrid) tách riêng khỏi thành phố để các nhóm cùng cấp. */
+  function modeKeys(str) { return rawLocs(str).filter(function (x) { return MODES.indexOf(x) >= 0; }); }
+  /** Chỉ các thành phố/tỉnh. Job chỉ ghi Remote → nhóm "Làm việc từ xa"; không ghi gì → "Chưa ghi thành phố". */
   function locKeys(str) {
+    var raw = rawLocs(str), c = raw.filter(function (x) { return MODES.indexOf(x) < 0 && x !== NOLOC; });
+    return c.length ? c : [raw.indexOf('Remote') >= 0 ? REMOTE_ONLY : NOCITY];
+  }
+  function rawLocs(str) {
     var out = [];
     String(str || '').split(/[,;\/|·]|\s-\s|\svà\s/i).forEach(function (x) {
       x = x.trim(); if (!x) return;
@@ -762,6 +770,9 @@
     });
     return out.length ? out : [NOLOC];
   }
+  var CITY_ORDER = ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng'];
+  function cityCmp(a, b) { var tail = function (x) { return x === NOCITY ? 2 : x === REMOTE_ONLY ? 1 : 0; }, ia = CITY_ORDER.indexOf(a), ib = CITY_ORDER.indexOf(b);
+    return tail(a) - tail(b) || (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b, 'vi'); }
   function prioBadge(j) { var p = j.priority || 'normal'; return p === 'normal' ? '' : ' <span class="pri ' + p + '" title="Mức ưu tiên">' + (p === 'urgent' ? '🔥 ' : '▲ ') + PRIO[p][0] + '</span>'; }
   function jobsFiltered(count) {
     var q = plain(JF.q);
@@ -769,6 +780,7 @@
       if (JF.status !== 'all' && j.status !== JF.status) return false;
       if (JF.prio && (j.priority || 'normal') !== JF.prio) return false;
       if (JF.loc && locKeys(j.location).indexOf(JF.loc) < 0) return false;
+      if (JF.mode && modeKeys(j.location).indexOf(JF.mode) < 0) return false;
       if (q && plain([j.title, j.level, j.location, (j.must_have_tech || []).join(' ')].join(' ')).indexOf(q) < 0) return false;
       return true;
     });
@@ -783,7 +795,7 @@
   }
   function jobRow(j, count) {
     var n = count[j.id] || 0, picked = !!JF.sel[j.id], p = j.priority || 'normal';
-    var locs = locKeys(j.location).filter(function (x) { return x !== NOLOC; });
+    var locs = rawLocs(j.location).filter(function (x) { return x !== NOLOC; });
     var meta = [j.level, j.job_type, j.salary_text].filter(Boolean).join(' · ');
     return '<div class="jrow2' + (picked ? ' sel' : '') + (j.status === 'closed' ? ' off' : '') + '" data-act="' + (JF.pick ? 'jpick' : 'job') + '" data-id="' + j.id + '">' +
       (JF.pick ? '<span class="jck" aria-hidden="true">' + (picked ? '✓' : '') + '</span>' : '') +
@@ -812,10 +824,10 @@
         var keys = JF.group === 'loc' ? locKeys(j.location) : JF.group === 'status' ? [JLABEL[j.status]] : [PRIO[j.priority || 'normal'][0]];
         keys.forEach(function (k) { if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(j); });
       });
-      if (JF.group === 'loc') order.sort(function (a, b) { return a === NOLOC ? 1 : b === NOLOC ? -1 : groups[b].length - groups[a].length || a.localeCompare(b, 'vi'); });
+      if (JF.group === 'loc') order.sort(cityCmp);
       html = order.map(function (k) {
         var open = groups[k].filter(function (j) { return j.status === 'open'; }).length;
-        return '<div class="jgrp"><span>' + (JF.group === 'loc' && k !== NOLOC ? '📍 ' : '') + esc(k) + '</span><span class="muted">' + groups[k].length + ' job' + (open ? ' · ' + open + ' đang mở' : '') + '</span></div>' + groups[k].map(function (j) { return jobRow(j, count); }).join('');
+        return '<div class="jgrp"><span>' + (JF.group === 'loc' && k !== NOCITY && k !== REMOTE_ONLY ? '📍 ' : '') + esc(k) + '</span><span class="muted">' + groups[k].length + ' job' + (open ? ' · ' + open + ' đang mở' : '') + '</span></div>' + groups[k].map(function (j) { return jobRow(j, count); }).join('');
       }).join('');
     }
     box.innerHTML = html;
@@ -832,25 +844,32 @@
   }
   function paintJobFilters() {
     var el = $('#jflt'); if (!el) return;
-    var st = { all: S.jobs.length, open: 0, draft: 0, paused: 0, closed: 0 }, locs = {}, urgent = 0;
-    S.jobs.forEach(function (j) { st[j.status]++; if (j.priority === 'urgent' && j.status === 'open') urgent++; locKeys(j.location).forEach(function (k) { locs[k] = (locs[k] || 0) + 1; }); });
-    var locList = Object.keys(locs).sort(function (a, b) { return a === NOLOC ? 1 : b === NOLOC ? -1 : locs[b] - locs[a] || a.localeCompare(b, 'vi'); });
+    var st = { all: S.jobs.length, open: 0, draft: 0, paused: 0, closed: 0 }, urgent = 0;
+    S.jobs.forEach(function (j) { st[j.status]++; if (j.priority === 'urgent' && j.status === 'open') urgent++; });
+    var jl = $('#jloc'); if (jl) jl.innerHTML = cityOpts();
     var chip = function (act, val, label, n, on) { return '<button type="button" class="chp' + (on ? ' on' : '') + '" data-act="' + act + '" data-v="' + esc(val) + '">' + esc(label) + ' <i>' + n + '</i></button>'; };
     el.innerHTML =
       '<div class="jsum">' + S.jobs.length + ' job · <b>' + st.open + '</b> đang mở' + (urgent ? ' · <span class="pri urgent">🔥 ' + urgent + ' gấp</span>' : '') + '</div>' +
-      '<div class="chips2">' + [['all', 'Tất cả'], ['open', 'Đang mở'], ['draft', 'Nháp'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']].map(function (x) { return chip('jfs', x[0], x[1], st[x[0]], JF.status === x[0]); }).join('') + '</div>' +
-      (locList.length > 1 || (locList.length === 1 && locList[0] !== NOLOC) ? '<div class="chips2"><span class="lblx">📍 Địa điểm</span>' + chip('jfl', '', 'Tất cả', S.jobs.length, !JF.loc) + locList.map(function (k) { return chip('jfl', k, k, locs[k], JF.loc === k); }).join('') + '</div>' : '');
+      '<div class="chips2">' + [['all', 'Tất cả'], ['open', 'Đang mở'], ['draft', 'Nháp'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']].map(function (x) { return chip('jfs', x[0], x[1], st[x[0]], JF.status === x[0]); }).join('') + '</div>';
+  }
+  function cityOpts() {
+    var c = {}; S.jobs.forEach(function (j) { locKeys(j.location).forEach(function (k) { c[k] = (c[k] || 0) + 1; }); });
+    return '<option value="">Mọi thành phố</option>' + Object.keys(c).sort(cityCmp).map(function (k) { return '<option value="' + esc(k) + '"' + (JF.loc === k ? ' selected' : '') + '>' + esc(k) + ' (' + c[k] + ')</option>'; }).join('');
   }
   VIEWS.jobs = function () {
     $('#view').innerHTML = '<div class="ph"><h1>Việc làm</h1><span class="sp"></span><button class="b" id="jpickbtn" data-act="jpicktoggle" type="button">Chọn nhiều</button><button class="b pri" data-act="newjob" type="button">+ Tạo job</button></div>' +
       '<div id="jflt"></div>' +
       '<div class="tb jtb"><input class="i2 grow" id="jq" type="search" placeholder="Tìm tên job, địa điểm, công nghệ…" value="' + esc(JF.q) + '">' +
+      '<select class="i2" id="jloc" aria-label="Lọc theo thành phố">' + cityOpts() + '</select>' +
+      '<select class="i2" id="jmode" aria-label="Lọc theo hình thức"><option value="">Mọi hình thức</option><option value="Remote"' + (JF.mode === 'Remote' ? ' selected' : '') + '>Remote</option><option value="Hybrid"' + (JF.mode === 'Hybrid' ? ' selected' : '') + '>Hybrid</option></select>' +
       '<select class="i2" id="jprio" aria-label="Lọc theo ưu tiên"><option value="">Mọi ưu tiên</option><option value="urgent"' + (JF.prio === 'urgent' ? ' selected' : '') + '>🔥 Gấp</option><option value="high"' + (JF.prio === 'high' ? ' selected' : '') + '>▲ Cao</option><option value="normal"' + (JF.prio === 'normal' ? ' selected' : '') + '>Thường</option></select>' +
-      '<select class="i2" id="jgroup" aria-label="Nhóm theo"><option value="loc"' + (JF.group === 'loc' ? ' selected' : '') + '>Nhóm: Địa điểm</option><option value="status"' + (JF.group === 'status' ? ' selected' : '') + '>Nhóm: Trạng thái</option><option value="prio"' + (JF.group === 'prio' ? ' selected' : '') + '>Nhóm: Ưu tiên</option><option value="none"' + (JF.group === 'none' ? ' selected' : '') + '>Không nhóm</option></select>' +
+      '<select class="i2" id="jgroup" aria-label="Nhóm theo"><option value="loc"' + (JF.group === 'loc' ? ' selected' : '') + '>Nhóm: Thành phố</option><option value="status"' + (JF.group === 'status' ? ' selected' : '') + '>Nhóm: Trạng thái</option><option value="prio"' + (JF.group === 'prio' ? ' selected' : '') + '>Nhóm: Ưu tiên</option><option value="none"' + (JF.group === 'none' ? ' selected' : '') + '>Không nhóm</option></select>' +
       '<select class="i2" id="jsort" aria-label="Sắp xếp"><option value="prio"' + (JF.sort === 'prio' ? ' selected' : '') + '>Xếp: Ưu tiên</option><option value="new"' + (JF.sort === 'new' ? ' selected' : '') + '>Xếp: Mới nhất</option><option value="apps"' + (JF.sort === 'apps' ? ' selected' : '') + '>Xếp: Nhiều hồ sơ</option><option value="title"' + (JF.sort === 'title' ? ' selected' : '') + '>Xếp: Tên A-Z</option></select></div>' +
       '<div class="box" id="jbody"></div><div class="jbar" id="jbar"></div>';
     paintJobFilters(); paintJobs();
     $('#jq').addEventListener('input', function (e) { JF.q = e.target.value; paintJobs(); });
+    $('#jloc').addEventListener('change', function (e) { JF.loc = e.target.value; paintJobs(); });
+    $('#jmode').addEventListener('change', function (e) { JF.mode = e.target.value; paintJobs(); });
     $('#jprio').addEventListener('change', function (e) { JF.prio = e.target.value; paintJobs(); });
     $('#jgroup').addEventListener('change', function (e) { JF.group = e.target.value; paintJobs(); });
     $('#jsort').addEventListener('change', function (e) { JF.sort = e.target.value; paintJobs(); });
@@ -1033,8 +1052,7 @@
       case 'jpick': if (JF.sel[id]) delete JF.sel[id]; else JF.sel[id] = 1; return paintJobs();
       case 'jall': jobsFiltered((function () { var c = {}; S.apps.forEach(function (a) { if (a.job_id) c[a.job_id] = 1; }); return c; })()).forEach(function (j) { JF.sel[j.id] = 1; }); return paintJobs();
       case 'jfs': JF.status = t.getAttribute('data-v'); paintJobFilters(); return paintJobs();
-      case 'jfl': JF.loc = t.getAttribute('data-v'); paintJobFilters(); return paintJobs();
-      case 'jprio': { var cur = S.jobs.filter(function (x) { return x.id === id; })[0]; if (!cur) return; var nx = PRIO_NEXT[cur.priority || 'normal'];
+            case 'jprio': { var cur = S.jobs.filter(function (x) { return x.id === id; })[0]; if (!cur) return; var nx = PRIO_NEXT[cur.priority || 'normal'];
         return api('jobs.save', { id: id, priority: nx }).then(function () { toast('Ưu tiên: ' + PRIO[nx][0]); return jobsReload(); }).catch(fail); }
       case 'jstat': { var sv = t.getAttribute('data-v');
         return api('jobs.save', { id: id, status: sv }).then(function () { toast('Đã chuyển sang "' + JLABEL[sv] + '"'); return jobsReload(); }).catch(fail); }
