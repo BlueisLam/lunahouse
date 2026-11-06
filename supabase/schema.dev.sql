@@ -70,6 +70,7 @@ create table if not exists lhdev_jobs (
   domains            text[] default '{}',
   min_years          numeric default 0,
   status             text not null default 'draft' check (status in ('draft','open','paused','closed')),
+  priority           text not null default 'normal' check (priority in ('normal','high','urgent')),  -- mức ưu tiên (nội bộ)
   created_at         timestamptz default now(),
   updated_at         timestamptz default now()
 );

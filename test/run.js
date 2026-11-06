@@ -1018,6 +1018,37 @@ test('báo cáo: recruiter gửi báo lỗi/góp ý, admin nhận thông báo v�
   for (let i = 0; i < 4; i++) await bb('reports.send', { kind: 'idea', message: 'Góp ý số ' + i + ' cho web' });
   await assert.rejects(() => bb('reports.send', { kind: 'idea', message: 'Góp ý quá nhiều lần' }), e => e.status === 429);
 });
+test('job: mức ưu tiên, nhân đôi thành bản nháp, thao tác hàng loạt; chỉ đụng job của chính mình', async () => {
+  const bb = as(ckB);
+  const mk = async (title, extra = {}) => (await bb('jobs.save', { title, status: 'draft', location: 'TP.HCM, Remote', ...extra })).job;
+  const j1 = await mk('Ưu tiên A', { priority: 'urgent' }), j2 = await mk('Ưu tiên B'), j3 = await mk('Ưu tiên C', { priority: 'không-hợp-lệ' });
+  assert.strictEqual(j1.priority, 'urgent'); assert.strictEqual(j2.priority, 'normal'); assert.strictEqual(j3.priority, 'normal', 'giá trị lạ về Thường');
+  assert.strictEqual((await bb('jobs.save', { id: j2.id, priority: 'high' })).job.priority, 'high');
+  // nhân đôi: bản nháp mới, slug khác, giữ nội dung và ưu tiên
+  const d = (await bb('jobs.duplicate', { id: j1.id })).job;
+  assert.strictEqual(d.status, 'draft'); assert.notStrictEqual(d.slug, j1.slug); assert.strictEqual(d.title, 'Ưu tiên A (bản sao)'); assert.strictEqual(d.priority, 'urgent'); assert.strictEqual(d.location, 'TP.HCM, Remote'); assert.strictEqual(d.recruiter_id, recB.id);
+  assert.strictEqual((await bb('jobs.duplicate', { id: d.id })).job.title, 'Ưu tiên A (bản sao)', 'không chồng thêm chữ (bản sao)');
+  // hàng loạt
+  let r = await bb('jobs.bulk', { ids: [j1.id, j2.id, j3.id], priority: 'high' }); assert.strictEqual(r.updated, 3);
+  assert.ok([j1, j2, j3].every(j => H.fake.t.lh_jobs.find(x => x.id === j.id).priority === 'high'));
+  r = await bb('jobs.bulk', { ids: [j1.id, j2.id], status: 'paused' }); assert.strictEqual(r.updated, 2);
+  assert.strictEqual(H.fake.t.lh_jobs.find(x => x.id === j1.id).status, 'paused');
+  await assert.rejects(() => bb('jobs.bulk', { ids: [] , status: 'open' }), e => e.status === 400);
+  await assert.rejects(() => bb('jobs.bulk', { ids: [j1.id], status: 'bậy' }), e => e.status === 400);
+  await assert.rejects(() => bb('jobs.bulk', { ids: [j1.id] }), e => e.status === 400);
+  // job của người khác không bị đụng
+  const ownerJob = H.fake.t.lh_jobs.find(x => x.recruiter_id !== recB.id);
+  r = await bb('jobs.bulk', { ids: [ownerJob.id], status: 'closed', priority: 'urgent' }); assert.strictEqual(r.updated, 0);
+  assert.notStrictEqual(H.fake.t.lh_jobs.find(x => x.id === ownerJob.id).priority, 'urgent'); await assert.rejects(() => bb('jobs.duplicate', { id: ownerJob.id }), e => e.status === 404);
+  // xoá hàng loạt: job có hồ sơ được giữ lại
+  const withApp = H.fake.t.lh_applications.find(a => a.recruiter_id === recB.id);
+  const ids = [j3.id, d.id].concat(withApp ? [withApp.job_id].filter(Boolean) : []);
+  r = await bb('jobs.bulk', { ids, delete: true }); assert.ok(r.deleted >= 2);
+  assert.ok(!H.fake.t.lh_jobs.some(x => x.id === j3.id)); if (withApp && withApp.job_id) assert.ok(H.fake.t.lh_jobs.some(x => x.id === withApp.job_id), 'job có hồ sơ được giữ'); 
+  // ưu tiên là thông tin nội bộ: trang công khai không lộ
+  const pub = await H.invoke(H.F('jobs-public'), { method: 'GET', query: {}, headers: {} }).catch(() => null);
+  if (pub && pub.json && pub.json.jobs) assert.ok(pub.json.jobs.every(x => x.priority === undefined), 'không lộ priority');
+});
 test('thanh toán QR: chỉ có thông tin nhận tiền khi đã cấu hình PAY_BANK/PAY_ACCOUNT', async () => {
   assert.strictEqual((await as(ckB)('bootstrap')).plan.pay, null);
   Object.assign(process.env, { PAY_BANK: 'VCB', PAY_ACCOUNT: '0001112223', PAY_NAME: 'NGUYEN VAN A' });

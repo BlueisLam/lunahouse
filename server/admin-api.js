@@ -12,6 +12,7 @@ const N = require('./_lib/notify');
 const MAX_CV_BYTES = 4 * 1024 * 1024;
 const LIST_COLS = 'id,full_name,address,phone_number,email,positions,total_years_experience,technologies,project_domains,headline,is_open_to_work,parse_status,dup_of,source,expected_salary,english_level,job_type_preference,cv_filename,cv_upload_date,created_at';
 const JOB_STATUS = ['draft', 'open', 'paused', 'closed'];
+const JOB_PRIORITY = ['normal', 'high', 'urgent'];
 const JOB_TYPES = ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'];
 const SCORE_BATCH_MAX = 6;
 
@@ -52,6 +53,7 @@ function jobPatch(b) {
   ['must_have_tech', 'nice_to_have_tech', 'domains'].forEach(k => { if (b[k] !== undefined) o[k] = U.toArr(b[k]); });
   if (b.min_years !== undefined) { const n = parseFloat(b.min_years); o.min_years = isNaN(n) ? 0 : Math.max(0, Math.min(40, n)); }
   if (b.status !== undefined) o.status = JOB_STATUS.includes(b.status) ? b.status : 'draft';
+  if (b.priority !== undefined) o.priority = JOB_PRIORITY.includes(b.priority) ? b.priority : 'normal';
   return o;
 }
 
@@ -214,23 +216,82 @@ A['candidates.merge'] = async (b) => {
   return { ok: true, id: to.id };
 };
 
+/** Slug duy nhất toàn site cho job mới. */
+async function uniqueSlug(db, title) {
+  let slug = U.slugify(title);
+  for (let i = 0; i < 5; i++) {
+    const hit = must(await db.from('lh_jobs').select('id').eq('slug', slug).limit(1), 'slug')[0];
+    if (!hit) break;
+    slug = U.slugify(title).slice(0, 52) + '-' + U.genCode().slice(3, 7).toLowerCase();
+  }
+  return slug;
+}
+const missingPriority = (r) => r && r.error && /priority/i.test(r.error.message || '');
+
 A['jobs.save'] = async (b) => {
   const db = sb();
   const patch = jobPatch(b);
   if (!b.id) {
     if (!patch.title) throw new U.HttpError(400, 'Cần có tên vị trí.');
     if (patch.status === 'open') await PLAN.checkOpenJob(b._rec, b._rid);
-    let slug = U.slugify(patch.title);
-    for (let i = 0; i < 5; i++) {
-      const hit = must(await db.from('lh_jobs').select('id').eq('slug', slug).limit(1), 'slug')[0]; // slug là duy nhất toàn site
-      if (!hit) break;
-      slug = U.slugify(patch.title).slice(0, 52) + '-' + U.genCode().slice(3, 7).toLowerCase();
-    }
-    return { job: must(await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(), 'insert job') };
+    const slug = await uniqueSlug(db, patch.title);
+    let r = await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single();
+    if (missingPriority(r)) { delete patch.priority; r = await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(); } // chưa chạy SQL ưu tiên
+    return { job: must(r, 'insert job') };
   }
   const curJob = await own('lh_jobs', b.id, b._rid, 'id,status');
   if (patch.status === 'open' && curJob.status !== 'open') await PLAN.checkOpenJob(b._rec, b._rid);
-  return { job: must(await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(), 'update job') };
+  let r = await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single();
+  if (missingPriority(r)) { delete patch.priority; r = await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(); }
+  return { job: must(r, 'update job') };
+};
+
+/** Nhân đôi một job thành bản nháp mới (cùng nội dung, slug mới). */
+A['jobs.duplicate'] = async (b) => {
+  const db = sb();
+  const src = await own('lh_jobs', b.id, b._rid, '*');
+  const title = (String(src.title).replace(/\s*\(bản sao\)$/i, '') + ' (bản sao)').slice(0, 120);
+  const copy = { title, level: src.level, job_type: src.job_type, salary_text: src.salary_text, location: src.location, lang: src.lang, summary: src.summary,
+    responsibilities: src.responsibilities, requirements: src.requirements, benefits: src.benefits, must_have_tech: src.must_have_tech, nice_to_have_tech: src.nice_to_have_tech,
+    domains: src.domains, min_years: src.min_years, status: 'draft', priority: src.priority || 'normal' };
+  const slug = await uniqueSlug(db, title);
+  let r = await db.from('lh_jobs').insert({ ...copy, slug, recruiter_id: b._rid }).select().single();
+  if (missingPriority(r)) { delete copy.priority; r = await db.from('lh_jobs').insert({ ...copy, slug, recruiter_id: b._rid }).select().single(); }
+  return { job: must(r, 'duplicate job') };
+};
+
+/** Thao tác hàng loạt: đổi trạng thái, đổi mức ưu tiên hoặc xoá nhiều job một lúc. Job của người khác bị bỏ qua. */
+A['jobs.bulk'] = async (b) => {
+  const db = sb();
+  const ids = [...new Set(Array.isArray(b.ids) ? b.ids.map(String) : [])].slice(0, 100);
+  if (!ids.length) throw new U.HttpError(400, 'Chưa chọn job nào.');
+  const wantStatus = b.status !== undefined, wantPrio = b.priority !== undefined, wantDel = b.delete === true;
+  if (!wantStatus && !wantPrio && !wantDel) throw new U.HttpError(400, 'Chưa chọn thao tác.');
+  if (wantStatus && !JOB_STATUS.includes(b.status)) throw new U.HttpError(400, 'Trạng thái không hợp lệ.');
+  if (wantPrio && !JOB_PRIORITY.includes(b.priority)) throw new U.HttpError(400, 'Mức ưu tiên không hợp lệ.');
+  const rows = must(await db.from('lh_jobs').select('id,status,title').in('id', ids).eq('recruiter_id', b._rid), 'jobs');
+  const res = { updated: 0, skipped: [], deleted: 0 };
+  if (wantDel) {
+    for (const j of rows) {
+      const n = await db.from('lh_applications').select('id', { count: 'exact', head: true }).eq('job_id', j.id);
+      if ((n.count || 0) > 0) { res.skipped.push({ id: j.id, title: j.title, why: 'đã có hồ sơ' }); continue; }
+      must(await db.from('lh_jobs').delete().eq('id', j.id).eq('recruiter_id', b._rid), 'delete job'); res.deleted++;
+    }
+    return res;
+  }
+  for (const j of rows) {
+    const patch = {};
+    if (wantStatus && j.status !== b.status) {
+      if (b.status === 'open') { try { await PLAN.checkOpenJob(b._rec, b._rid); } catch (e) { res.skipped.push({ id: j.id, title: j.title, why: 'vượt giới hạn gói Free' }); continue; } }
+      patch.status = b.status;
+    }
+    if (wantPrio) patch.priority = b.priority;
+    if (!Object.keys(patch).length) continue;
+    const r = await db.from('lh_jobs').update(patch).eq('id', j.id).eq('recruiter_id', b._rid);
+    if (missingPriority(r)) throw new U.HttpError(500, 'Chưa có cột ưu tiên. Hãy chạy file SQL 2026-11-job-uu-tien.sql trong Supabase rồi thử lại.');
+    must(r, 'bulk job'); res.updated++;
+  }
+  return res;
 };
 
 A['jobs.delete'] = async (b) => {

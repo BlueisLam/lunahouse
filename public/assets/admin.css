@@ -322,3 +322,44 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 
 /* Chỉ báo kéo để tải lại (dùng khi ghim ra màn hình chính iPhone) */
 .ptr { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 6px); transform: translate(-50%, -40px); opacity: 0; z-index: 60; pointer-events: none; background: var(--ink, #17143a); color: #fff; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 99px; box-shadow: 0 6px 18px rgba(0,0,0,.25); transition: opacity .12s; white-space: nowrap; }
+
+/* ---------- Trang Việc làm: lọc, nhóm, ưu tiên, thao tác ---------- */
+.jsum { color: var(--muted); font-size: 14px; margin: -4px 0 10px; }
+.jsum b { color: var(--ink); }
+.chips2 { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; align-items: center; }
+.chips2::-webkit-scrollbar { display: none; }
+.chips2 .lblx { font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.chp { flex: none; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2); border-radius: 99px; padding: 7px 13px; font: 600 13px var(--body); cursor: pointer; white-space: nowrap; }
+.chp i { font-style: normal; color: var(--muted); font-weight: 500; margin-left: 3px; }
+.chp.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chp.on i { color: inherit; opacity: .85; }
+.jtb { flex-wrap: wrap; }
+.jtb .i2:not(.grow) { width: auto; }
+.pri { font: 700 11px/1 var(--body); padding: 4px 8px; border-radius: 99px; margin-left: 6px; white-space: nowrap; vertical-align: middle; }
+.pri.urgent { background: var(--bad-soft); color: var(--bad); }
+.pri.high { background: var(--warn-soft); color: var(--warn); }
+.jgrp { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 16px; background: var(--line-2); font-weight: 700; font-size: 13.5px; position: sticky; top: 0; z-index: 2; }
+.jgrp .muted { font-weight: 500; font-size: 12.5px; }
+.jrow2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; align-items: start; padding: 14px 16px; border-top: 1px solid var(--line-2); cursor: pointer; }
+.jrow2:hover { background: var(--accent-soft); }
+.jrow2.off { opacity: .62; }
+.jrow2.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.jrow2 .t1 { font-weight: 700; font-size: 15.5px; }
+.jrow2 .t2 { color: var(--muted); font-size: 13px; }
+.jrow2 .jside { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 12.5px; }
+.jrow2 .jact { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.jrow2 .jact .b { text-decoration: none; }
+.jrow2 .jck { position: absolute; }
+.jrow2:has(.jck) { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.jck { width: 22px; height: 22px; border: 2px solid var(--line); border-radius: 7px; display: grid; place-items: center; font-weight: 800; font-size: 14px; color: var(--on-accent); position: static !important; margin-top: 2px; }
+.jrow2.sel .jck { background: var(--accent); border-color: var(--accent); }
+.jbar { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 40; background: var(--surface); border: 1.5px solid var(--accent); border-radius: 14px; padding: 10px 12px; gap: 8px; flex-wrap: wrap; align-items: center; box-shadow: 0 14px 40px -10px rgba(23, 20, 58, .45); max-width: calc(100vw - 24px); width: max-content; }
+.jbar.on { display: flex; }
+.jbar b { font-size: 13.5px; }
+.jbar .i2 { width: auto; padding: 6px 10px; }
+.locq { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+@media (max-width: 900px) {
+  .jbar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .jrow2 .jact .b { flex: 1 1 auto; justify-content: center; }
+}
+@media (max-width: 560px) { .jrow2 { padding: 12px 14px; } .jtb .i2 { flex: 1 1 45%; width: auto; } }
