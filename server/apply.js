@@ -121,7 +121,7 @@ exports.handler = U.wrap(async (event) => {
 
   // Nộp lại sau khi rút: mở lại hồ sơ cũ thay vì tạo mới
   if (reapply) {
-    const app = must(await db.from('lh_applications').update({ status: 'new', cover_note: f.cover_note, public_note: '', ip_hash: ipHash }).eq('id', reapply.id).select().single(), 'reapply');
+    const app = must(await db.from('lh_applications').update({ status: 'new', cover_note: f.cover_note, public_note: '', ip_hash: ipHash, next_action: 'Review CV', next_action_date: U.dayVN(3) }).eq('id', reapply.id).select().single(), 'reapply');
     must(await db.from('lh_activities').insert({ application_id: app.id, type: 'status', note: 'Ứng viên nộp lại sau khi rút hồ sơ (đã cập nhật CV)', meta: { from: 'withdrawn', to: 'new' }, recruiter_id: rid }), 'activity');
     await N.settle([N.notifyNewApplication({ app, cand, job, reapply: true, rec }), N.emailReceipt({ app, cand, job, rec })]);
     return U.json(200, { ok: true, code: app.code, job_title: job ? job.title : null, email: cand.email, reapplied: true });
@@ -133,6 +133,7 @@ exports.handler = U.wrap(async (event) => {
     const r = await db.from('lh_applications').insert({
       code: U.genCode(), job_id: job ? job.id : null, candidate_id: cand.id, status: 'new', recruiter_id: rid,
       cover_note: f.cover_note, ip_hash: ipHash,
+      next_action: 'Review CV', next_action_date: U.dayVN(3),
     }).select().single();
     if (!r.error) app = r.data;
     else if (!(r.error.code === '23505' && /code/.test((r.error.message || '') + (r.error.details || '')))) must(r, 'insert application');

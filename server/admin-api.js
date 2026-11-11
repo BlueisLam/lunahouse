@@ -88,7 +88,7 @@ async function createApp({ job_id, candidate_id, match_score, match_reason, rid 
     const r = await db.from('lh_applications').insert({
       code: U.genCode(), job_id, candidate_id, status: 'new', recruiter_id: rid,
       match_score: match_score == null ? null : Math.round(match_score), match_reason: U.clean(match_reason, 400),
-      next_action: 'Gọi điện xác nhận nhu cầu',
+      next_action: 'Gọi điện xác nhận nhu cầu', next_action_date: U.dayVN(1),
     }).select().single();
     if (!r.error) app = r.data;
     else if (!(r.error.code === '23505' && /code/.test((r.error.message || '') + (r.error.details || '')))) must(r, 'insert app');

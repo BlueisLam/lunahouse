@@ -128,7 +128,12 @@ function sniffFile(buf) {
 }
 const MIME = { pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', png: 'image/png', jpg: 'image/jpeg' };
 
+/** Ngày YYYY-MM-DD theo giờ Việt Nam, cộng thêm n ngày. */
+function dayVN(n = 0) {
+  return new Date(Date.now() + 7 * 3600e3 + n * 86400e3).toISOString().slice(0, 10);
+}
+
 module.exports = {
-  HttpError, genCode, normCode, norm, digits, phoneNorm, esc, clean, toArr, slugify,
+  dayVN, HttpError, genCode, normCode, norm, digits, phoneNorm, esc, clean, toArr, slugify,
   sha256, sleep, json, parseBody, readInput, clientIp, wrap, sniffFile, MIME,
 };

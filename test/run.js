@@ -151,6 +151,8 @@ test('apply: thành công → lưu, CV vào storage, Telegram + 2 email, AI đ�
   assert.strictEqual(cand.total_years_experience, 6);
   assert.strictEqual(cand.address, 'Hà Nội', 'địa chỉ ứng viên nhập được giữ');
   assert.strictEqual(H.fake.files.size, 1);
+  assert.strictEqual(H.fake.t.lh_applications[0].next_action, 'Review CV', 'hồ sơ mới: việc mặc định Review CV');
+  assert.strictEqual(H.fake.t.lh_applications[0].next_action_date, require('../server/_lib/util').dayVN(3), 'hạn 3 ngày');
   const tg = H.calls.filter(c => /telegram/.test(c.url));
   assert.strictEqual(tg.length, 1);
   assert.match(tg[0].body.text, /Nguyễn Văn An/); assert.match(tg[0].body.text, /Senior Java Developer/); assert.match(tg[0].body.text, new RegExp(appCode));

@@ -551,6 +551,7 @@
     $('#layer').innerHTML = ''; document.body.style.overflow = '';
     if (!silent && S.open) { S.open = null; setHash(S.tab); }
   }
+  function dayStr(n) { return new Date(Date.now() + 7 * 3600e3 + n * 86400e3).toISOString().slice(0, 10); }
   function field(label, k, val, o) {
     o = o || {};
     return '<div class="fld"><label class="lbl">' + label + '</label>' + (o.area ? '<textarea class="i2" data-k="' + k + '"' + (o.list ? ' data-list="1"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + '>' + esc(val) + '</textarea>'
@@ -728,6 +729,8 @@
         '<div class="fld" style="margin-top:12px"><label class="lbl">Lời nhắn / feedback cho ứng viên (chỉ hiện ở trang tra cứu khi bạn nhập; nếu bị từ chối sẽ hiện là Feedback)</label><textarea class="i2" data-k="public_note" maxlength="1000" placeholder="VD: Lịch phỏng vấn 14h thứ Năm (online qua Google Meet)… Hoặc khi từ chối: feedback ngắn, lý do chưa phù hợp, gợi ý cải thiện.">' + esc(a.public_note) + '</textarea></div>' +
         '<label class="chk"><input type="checkbox" data-k="notify">Báo cho ứng viên qua email khi lưu</label></div>' +
         '<div class="sec"><span class="lbl">Việc tiếp theo</span><div class="g2">' + field('Làm gì', 'next_action', a.next_action) + '<div class="fld"><label class="lbl">Hạn</label><input class="i2" type="date" data-k="next_action_date" value="' + esc(a.next_action_date || '') + '"></div></div>' +
+        '<div class="locq">' + [['Review CV', 3], ['Hẹn call', 1], ['Gửi JD', 1], ['Hẹn phỏng vấn', 3], ['Hỏi lương mong muốn', 2], ['Gửi offer', 2], ['Follow-up', 3]].map(function (x) { return '<button class="chp" type="button" data-act="nasug" data-v="' + esc(x[0]) + '" data-d="' + x[1] + '">' + esc(x[0]) + '</button>'; }).join('') + '</div>' +
+        '<div class="locq"><span class="lblx">Hạn:</span>' + [['Hôm nay', 0], ['Ngày mai', 1], ['+3 ngày', 3], ['+1 tuần', 7]].map(function (x) { return '<button class="chp" type="button" data-act="nadate" data-d="' + x[1] + '">' + x[0] + '</button>'; }).join('') + '<button class="chp" type="button" data-act="nadone">✓ Xong, xoá việc</button></div>' +
         '<div class="fld"><label class="lbl">Ghi chú nội bộ (ứng viên không thấy)</label><textarea class="i2" data-k="internal_note">' + esc(a.internal_note) + '</textarea></div>' +
         (a.cover_note ? '<div class="fld"><label class="lbl">Lời nhắn của ứng viên</label><div class="cvtext" style="font-family:var(--body);font-size:14px">' + esc(a.cover_note) + '</div></div>' : '') +
         (a.match_score != null ? '<div class="muted">Điểm matching: <b class="num">' + a.match_score + '</b>' + (a.match_reason ? ' · ' + esc(a.match_reason) : '') + '</div>' : '') + '</div>' +
@@ -1077,6 +1080,9 @@
         if (bk === 'delete') { if (!confirm('Xoá ' + nn + ' job đã chọn? Job đã có hồ sơ sẽ được giữ lại. Không hoàn tác được.')) return; return jobsBulk({ delete: true }); }
         if (bv === 'closed' && !confirm('Đóng ' + nn + ' job đã chọn?')) return;
         return jobsBulk({ status: bv }); }
+      case 'nasug': { var ni = $('.drawer [data-k="next_action"]'), di = $('.drawer [data-k="next_action_date"]'); if (!ni) return; ni.value = t.getAttribute('data-v'); if (di && !di.value) di.value = dayStr(+t.getAttribute('data-d')); return; }
+      case 'nadate': { var d2 = $('.drawer [data-k="next_action_date"]'); if (d2) d2.value = dayStr(+t.getAttribute('data-d')); return; }
+      case 'nadone': { var n3 = $('.drawer [data-k="next_action"]'), d3 = $('.drawer [data-k="next_action_date"]'); if (n3) n3.value = ''; if (d3) d3.value = ''; return toast('Đã xoá việc tiếp theo. Bấm Lưu để áp dụng.'); }
       case 'locadd': { var li = $('.drawer [data-k="location"]'); if (!li) return; var v = t.getAttribute('data-v'), parts = li.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
         if (parts.map(plain).indexOf(plain(v)) < 0) parts.push(v); li.value = parts.join(', '); return; }
       case 'newjob': return openJob('new');
