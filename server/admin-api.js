@@ -422,12 +422,19 @@ A['activities.add'] = async (b) => {
 A['match.stage1'] = async (b) => {
   const db = sb();
   const job = await own('lh_jobs', b.job_id, b._rid);
-  const cands = await allCandidates(null, b._rid);
+  let cands = await allCandidates(null, b._rid);
+  const total = cands.length;
+  // Lọc cứng theo thời gian nộp: chỉ xét N ứng viên nộp/cập nhật CV gần nhất (tuỳ chọn).
+  const recent = Math.floor(Number(b.recent));
+  if (recent > 0) {
+    const at = c => String(c.cv_upload_date || c.created_at || '');
+    cands = cands.slice().sort((x, y) => at(y).localeCompare(at(x))).slice(0, Math.min(recent, 1000));
+  }
   const pool = stage1(job, cands);
   const existing = must(await db.from('lh_applications').select('candidate_id').eq('job_id', job.id), 'existing');
   const has = new Set(existing.map(a => a.candidate_id));
   return {
-    total: cands.length, passed: pool.length,
+    total, considered: cands.length, recent: recent > 0 ? Math.min(recent, 1000) : 0, passed: pool.length,
     pool: pool.slice(0, 30).map(p => ({
       id: p.c.id, name: p.c.full_name, years: p.c.total_years_experience, positions: p.c.positions, headline: p.c.headline,
       pre: p.pre, overlap: p.overlap, niceHit: p.niceHit, domainHit: p.domainHit, has_app: has.has(p.c.id),

@@ -881,12 +881,16 @@
   }
 
   /* ---------- matching ---------- */
-  var MATCH = { job: '', res: null, busy: false };
+  var MATCH = { job: '', res: null, busy: false, recentOn: false, recentN: 50 };
   VIEWS.matching = function () {
     var jobs = S.jobs.filter(function (j) { return j.status !== 'closed'; });
     $('#view').innerHTML = '<div class="ph"><h1>Matching</h1></div><div class="box" style="padding:16px;margin-bottom:16px"><div class="tb" style="margin:0"><select class="i2 grow" id="mjob"><option value="">Chọn job…</option>' +
       jobs.map(function (j) { return '<option value="' + j.id + '"' + (MATCH.job === j.id ? ' selected' : '') + '>' + esc(j.title) + (j.status !== 'open' ? ' (' + j.status + ')' : '') + '</option>'; }).join('') +
-      '</select><button class="b pri" id="mgo" data-act="matchgo" type="button">Tìm ứng viên phù hợp</button></div><div class="muted" style="font-size:13px;margin-top:10px">Tầng 1 lọc cứng theo năm kinh nghiệm và tech bắt buộc của job (miễn phí). Tầng 2 để AI chấm điểm tối đa 24 người đứng đầu, kèm lý do mạnh và thiếu.</div><div id="mprog"></div></div><div id="mres"></div>';
+      '</select><button class="b pri" id="mgo" data-act="matchgo" type="button">Tìm ứng viên phù hợp</button></div>' +
+      '<div class="mrec"><label class="chk" style="margin:0"><input type="checkbox" id="mrecon"' + (MATCH.recentOn ? ' checked' : '') + '>Chỉ xét ứng viên nộp gần nhất</label>' +
+      '<span class="mrecn"><input class="i2" id="mrecn" type="number" min="1" max="1000" step="1" value="' + MATCH.recentN + '"' + (MATCH.recentOn ? '' : ' disabled') + ' aria-label="Số ứng viên"> người</span>' +
+      '<button class="chp" type="button" data-act="mrecset" data-v="50">50</button><button class="chp" type="button" data-act="mrecset" data-v="100">100</button></div>' +
+      '<div class="muted" style="font-size:13px;margin-top:10px">Tầng 1 lọc cứng theo năm kinh nghiệm và tech bắt buộc của job (miễn phí). Tầng 2 để AI chấm điểm tối đa 24 người đứng đầu, kèm lý do mạnh và thiếu.</div><div id="mprog"></div></div><div id="mres"></div>';
     if (MATCH.res && MATCH.job) paintMatch();
   };
   function runMatch() {
@@ -896,22 +900,28 @@
     MATCH.busy = true; MATCH.job = job; MATCH.res = null; $('#mres').innerHTML = '';
     var prog = $('#mprog'), btn = $('#mgo'); btn.disabled = true;
     prog.innerHTML = '<div class="muted" style="margin-top:12px">Đang lọc cứng…</div>';
-    var pool;
-    api('match.stage1', { job_id: job }).then(function (s1) {
+    var pool, rec = 0;
+    if ($('#mrecon') && $('#mrecon').checked) {
+      rec = Math.floor(Number($('#mrecn').value));
+      if (!(rec >= 1)) { MATCH.busy = false; btn.disabled = false; prog.innerHTML = ''; return toast('Nhập số ứng viên gần nhất (từ 1 đến 1000).', true); }
+      rec = Math.min(rec, 1000); MATCH.recentN = rec;
+    }
+    MATCH.recentOn = rec > 0;
+    api('match.stage1', { job_id: job, recent: rec }).then(function (s1) {
       pool = s1.pool;
       if (!pool.length) { prog.innerHTML = '<div class="alert info" style="margin:12px 0 0">Tầng 1 không giữ lại ai (' + s1.total + ' CV trong kho). Thử giảm "kinh nghiệm tối thiểu" hoặc bớt tech bắt buộc ở job này.</div>'; return null; }
       var todo = pool.slice(0, 24), results = [], i = 0;
       var step = function () {
         if (i >= todo.length) return Promise.resolve(results);
         var batch = todo.slice(i, i + 6);
-        prog.innerHTML = '<div style="margin-top:12px">Tầng 1: <b>' + s1.passed + '</b> / ' + s1.total + ' người qua lọc cứng · AI đang chấm điểm ' + Math.min(i + 6, todo.length) + '/' + todo.length + '</div><div class="bar-wrap"><i style="width:' + Math.round(i / todo.length * 100) + '%"></i></div>';
+        prog.innerHTML = '<div style="margin-top:12px">Tầng 1: <b>' + s1.passed + '</b> / ' + (s1.recent ? s1.considered + ' người nộp gần nhất (trong ' + s1.total + ' CV)' : s1.total) + ' qua lọc cứng · AI đang chấm điểm ' + Math.min(i + 6, todo.length) + '/' + todo.length + '</div><div class="bar-wrap"><i style="width:' + Math.round(i / todo.length * 100) + '%"></i></div>';
         return api('match.score', { job_id: job, ids: batch.map(function (p) { return p.id; }) }).then(function (r) { results = results.concat(r.results); i += 6; return step(); });
       };
       return step().then(function (results) {
         var by = {}; results.forEach(function (x) { by[x.candidate_id] = x; });
         MATCH.res = todo.map(function (p) { var x = by[p.id] || {}; return Object.assign({}, p, { score: x.score || 0, strengths: x.strengths || '', gaps: x.gaps || '' }); }).sort(function (a, b) { return b.score - a.score; });
         MATCH.meta = { total: s1.total, passed: s1.passed };
-        prog.innerHTML = '<div style="margin-top:12px">Tầng 1: <b>' + s1.passed + '</b> / ' + s1.total + ' người qua lọc cứng · đã chấm điểm <b>' + todo.length + '</b></div>';
+        prog.innerHTML = '<div style="margin-top:12px">Tầng 1: <b>' + s1.passed + '</b> / ' + (s1.recent ? s1.considered + ' người nộp gần nhất (trong ' + s1.total + ' CV)' : s1.total) + ' qua lọc cứng · đã chấm điểm <b>' + todo.length + '</b></div>';
         paintMatch();
       });
     }).catch(fail).then(function () { MATCH.busy = false; var b = $('#mgo'); if (b) b.disabled = false; });
@@ -1054,6 +1064,7 @@
       case 'copy': return copy(t.getAttribute('data-t'), t);
       case 'reopen': return openCandidate(id);
       case 'matchgo': return runMatch();
+      case 'mrecset': { var rc = $('#mrecon'), rn = $('#mrecn'); if (!rc || !rn) return; rc.checked = true; rn.disabled = false; rn.value = t.getAttribute('data-v'); MATCH.recentOn = true; MATCH.recentN = +rn.value; return; }
       case 'addpicked': return addPicked();
       case 'savecand': return saveCand(id);
       case 'saveapp': return saveApp(id);
@@ -1126,6 +1137,10 @@
     if (t.id === 'pjob') { S.pjob = t.value; paintPipe(); }
     if (t.id === 'mjob') { MATCH.job = t.value; MATCH.res = null; $('#mres').innerHTML = ''; $('#mprog').innerHTML = ''; }
     if (t.id === 'upl') { uploadFiles(t.files); t.value = ''; }
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'mrecon') { var rn = $('#mrecn'); if (rn) { rn.disabled = !e.target.checked; if (e.target.checked) rn.focus(); } MATCH.recentOn = e.target.checked; }
+    if (e.target && e.target.id === 'mrecn') MATCH.recentN = Math.floor(Number(e.target.value)) || MATCH.recentN;
   });
   document.addEventListener('change', function (e) { if (e.target && e.target.id === 'jbprio' && e.target.value) { var v = e.target.value; e.target.value = ''; jobsBulk({ priority: v }); } });
   document.addEventListener('click', function (e) { if (e.target.id === 'cfilt') $('#cside').classList.toggle('open'); });

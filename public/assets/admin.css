@@ -363,3 +363,8 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
   .jrow2 .jact .b { flex: 1 1 auto; justify-content: center; }
 }
 @media (max-width: 560px) { .jrow2 { padding: 12px 14px; } .jtb .i2 { flex: 1 1 45%; width: auto; } }
+
+.mrec { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: 12px; }
+.mrec .mrecn { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 14px; }
+.mrec .mrecn input { width: 84px; min-height: 36px; padding: 6px 10px; }
+.mrec .mrecn input:disabled { opacity: .5; }

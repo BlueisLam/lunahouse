@@ -284,6 +284,11 @@ test('matching: tầng 1 lọc, tầng 2 chấm điểm, thêm vào pipeline kh�
   assert.ok(!names.includes('Phạm PHP'), 'sai stack bị loại ở tầng 1');
   assert.strictEqual(s1.pool[0].name, 'Lê Văn Cường', 'đủ tech + domain + nice-to-have xếp đầu');
   assert.ok(s1.pool.find(p => p.name === 'Nguyễn Văn An').has_app);
+  // lọc cứng theo thời gian nộp: chỉ xét N ứng viên gần nhất
+  const rec1 = await admin('match.stage1', { job_id: jobId, recent: 1 });
+  assert.strictEqual(rec1.considered, 1); assert.strictEqual(rec1.total, s1.total); assert.ok(rec1.pool.length <= 1 && rec1.passed <= 1, 'chỉ xét 1 người gần nhất');
+  assert.strictEqual((await admin('match.stage1', { job_id: jobId, recent: 100000 })).considered, s1.total, 'trần 1000, không vượt tổng');
+  assert.strictEqual((await admin('match.stage1', { job_id: jobId, recent: 0 })).recent, 0, '0 = không giới hạn');
   const ids = s1.pool.map(p => p.id);
   const sc = await admin('match.score', { job_id: jobId, ids });
   assert.strictEqual(sc.results.length, ids.length);
