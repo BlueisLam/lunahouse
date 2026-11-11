@@ -43,10 +43,19 @@ function candPatch(b) {
   return o;
 }
 
+const LEVELS = ['Intern', 'Junior', 'Mid', 'Senior', 'Lead'];
+/** Một job có thể nhiều cấp độ: lưu dạng "Junior, Mid" theo thứ tự chuẩn. */
+function normLevels(v) {
+  const arr = Array.isArray(v) ? v : String(v || '').split(/[,;/|]/);
+  const set = new Set(arr.map(x => String(x).trim().toLowerCase()));
+  return LEVELS.filter(l => set.has(l.toLowerCase())).join(', ');
+}
+
 function jobPatch(b) {
   const o = {};
   const S = (k, max) => { if (b[k] !== undefined) o[k] = U.clean(b[k], max); };
-  S('title', 120); S('level', 30); S('salary_text', 80); S('location', 120); S('summary', 600);
+  S('title', 120);
+  if (b.level !== undefined) o.level = normLevels(b.level); S('salary_text', 80); S('location', 120); S('summary', 600);
   if (b.lang !== undefined) o.lang = b.lang === 'en' ? 'en' : 'vi';
   if (b.job_type !== undefined) o.job_type = JOB_TYPES.includes(b.job_type) ? b.job_type : 'Full-time';
   ['responsibilities', 'requirements', 'benefits'].forEach(k => { if (b[k] !== undefined) o[k] = String(b[k]).replace(/\r/g, '').slice(0, 6000).trim(); });

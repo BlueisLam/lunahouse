@@ -110,12 +110,16 @@
   /* ---------- trang chủ ---------- */
   function home() {
     communities();
-    var state = { jobs: [], q: '', level: '' };
+    var state = { jobs: [], q: '', level: '', city: '' };
+    var LV = ['Intern', 'Junior', 'Mid', 'Senior', 'Lead'], LL = window.LunaLoc;
+    function lvls(j) { return String(j.level || '').split(/\s*,\s*/).filter(Boolean); }
+    function cities(j) { return LL ? LL.locKeys(j.location) : []; }
     var box = $('#jobs');
     function render() {
       var q = state.q.toLowerCase();
       var rows = state.jobs.filter(function (j) {
-        if (state.level && j.level !== state.level) return false;
+        if (state.level && lvls(j).indexOf(state.level) < 0) return false;
+        if (state.city && cities(j).indexOf(state.city) < 0) return false;
         if (!q) return true;
         return (j.title + ' ' + j.level + ' ' + (j.must_have_tech || []).join(' ') + ' ' + (j.domains || []).join(' ')).toLowerCase().indexOf(q) >= 0;
       });
@@ -127,23 +131,36 @@
       if (!rows.length) { box.innerHTML = '<div class="empty"><h3>Không có vị trí khớp bộ lọc</h3><p>Thử bỏ bớt từ khoá, hoặc gửi CV vào kho tài năng ở bên dưới.</p></div>'; return; }
       box.innerHTML = rows.map(function (j) {
         return '<a class="job" href="/jobs/' + encodeURIComponent(j.slug) + '"><div><h3>' + esc(j.title) + '</h3><div class="meta">' +
-          (j.level ? '<span><b>' + esc(j.level) + '</b></span>' : '') + '<span>' + esc(j.job_type || 'Full-time') + '</span>' +
+          (j.level ? '<span><b>' + esc(lvls(j).join(' · ')) + '</b></span>' : '') + '<span>' + esc(j.job_type || 'Full-time') + '</span>' +
           '<span>' + esc(j.salary_text || tFor(j.lang)('Thoả thuận', 'Negotiable')) + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') + '</div></div><span class="go" aria-hidden="true">→</span>' +
           '<div class="chips">' + chips(j.must_have_tech, 'mono', 6) + '</div></a>';
       }).join('');
     }
     function pills() {
-      var levels = []; state.jobs.forEach(function (j) { if (j.level && levels.indexOf(j.level) < 0) levels.push(j.level); });
+      var seen = {}; state.jobs.forEach(function (j) { lvls(j).forEach(function (l) { seen[l] = 1; }); });
+      var levels = LV.filter(function (l) { return seen[l]; }).concat(Object.keys(seen).filter(function (l) { return LV.indexOf(l) < 0; }));
       var el = $('#levels');
-      if (levels.length < 2) { el.innerHTML = ''; return; }
-      el.innerHTML = ['Tất cả'].concat(levels).map(function (l, i) {
+      if (levels.length < 2) { el.innerHTML = ''; }
+      else el.innerHTML = ['Tất cả'].concat(levels).map(function (l, i) {
         var val = i === 0 ? '' : l;
         return '<button class="pill" type="button" data-l="' + esc(val) + '" aria-pressed="' + (state.level === val) + '">' + esc(l) + '</button>';
+      }).join('');
+      var cs = {}; state.jobs.forEach(function (j) { cities(j).forEach(function (c) { cs[c] = (cs[c] || 0) + 1; }); });
+      var cl = Object.keys(cs).filter(function (c) { return !LL || c !== LL.NOCITY; }).sort(LL ? LL.cityCmp : undefined), ce = $('#cities'), row = $('#cityrow');
+      if (!ce || cl.length < 2) { if (ce) ce.innerHTML = ''; if (row) row.style.display = 'none'; return; }
+      row.style.display = '';
+      ce.innerHTML = ['Tất cả địa điểm'].concat(cl).map(function (c, i) {
+        var val = i === 0 ? '' : c;
+        return '<button class="pill" type="button" data-c="' + esc(val) + '" aria-pressed="' + (state.city === val) + '">' + esc(c) + (i ? ' <span style="opacity:.6">' + cs[c] + '</span>' : '') + '</button>';
       }).join('');
     }
     $('#levels').addEventListener('click', function (e) {
       var b = e.target.closest('[data-l]'); if (!b) return;
       state.level = b.getAttribute('data-l'); pills(); render();
+    });
+    if ($('#cities')) $('#cities').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-c]'); if (!b) return;
+      state.city = b.getAttribute('data-c'); pills(); render();
     });
     $('#q').addEventListener('input', function (e) { state.q = e.target.value.trim(); render(); });
     api('/api/jobs' + (HANDLE ? '?handle=' + encodeURIComponent(HANDLE) : '')).then(function (r) { applyProfile(r.profile); state.jobs = r.jobs || []; pills(); render(); })

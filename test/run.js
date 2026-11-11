@@ -1026,6 +1026,9 @@ test('job: mức ưu tiên, nhân đôi thành bản nháp, thao tác hàng lo�
   const j1 = await mk('Ưu tiên A', { priority: 'urgent' }), j2 = await mk('Ưu tiên B'), j3 = await mk('Ưu tiên C', { priority: 'không-hợp-lệ' });
   assert.strictEqual(j1.priority, 'urgent'); assert.strictEqual(j2.priority, 'normal'); assert.strictEqual(j3.priority, 'normal', 'giá trị lạ về Thường');
   assert.strictEqual((await bb('jobs.save', { id: j2.id, priority: 'high' })).job.priority, 'high');
+  // nhiều cấp độ: nhận mảng hoặc chuỗi, giữ thứ tự chuẩn, bỏ giá trị lạ
+  assert.strictEqual((await bb('jobs.save', { id: j1.id, level: ['Mid', 'Junior', 'xyz'] })).job.level, 'Junior, Mid');
+  assert.strictEqual((await bb('jobs.save', { id: j1.id, level: 'senior, Lead' })).job.level, 'Senior, Lead');
   // nhân đôi: bản nháp mới, slug khác, giữ nội dung và ưu tiên
   const d = (await bb('jobs.duplicate', { id: j1.id })).job;
   assert.strictEqual(d.status, 'draft'); assert.notStrictEqual(d.slug, j1.slug); assert.strictEqual(d.title, 'Ưu tiên A (bản sao)'); assert.strictEqual(d.priority, 'urgent'); assert.strictEqual(d.location, 'TP.HCM, Remote'); assert.strictEqual(d.recruiter_id, recB.id);

@@ -749,47 +749,7 @@
   var PRIO = { urgent: ['Gấp', 3], high: ['Cao', 2], normal: ['Thường', 1] };
   var PRIO_NEXT = { normal: 'high', high: 'urgent', urgent: 'normal' };
   var JF = { q: '', status: 'all', loc: '', mode: '', prio: '', group: 'loc', sort: 'prio', pick: false, sel: {} };
-  var LOC_MAP = [[/^(ho chi minh|hcm|tp ?hcm|tphcm|hcmc|sai gon|saigon|tp ho chi minh)$/, 'Hồ Chí Minh'], [/^(ha noi|hn|hanoi)$/, 'Hà Nội'], [/^(da nang|dn)$/, 'Đà Nẵng'],
-    [/^(remote|wfh|work from home|tu xa|lam viec tu xa)$/, 'Remote'], [/^hybrid$/, 'Hybrid'], [/^(can tho)$/, 'Cần Thơ'], [/^(hai phong)$/, 'Hải Phòng'], [/^(binh duong)$/, 'Bình Dương'], [/^(dong nai)$/, 'Đồng Nai']];
-  var NOLOC = 'Chưa ghi địa điểm';
-  function plain(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/[.]/g, '').replace(/\s+/g, ' ').trim(); }
-  /** Tách "Hồ Chí Minh, Hà Nội / Remote" thành các địa điểm chuẩn hoá; một job có thể thuộc nhiều địa điểm. */
-  var MODES = ['Remote', 'Hybrid'], NOCITY = 'Chưa ghi thành phố', REMOTE_ONLY = 'Làm việc từ xa';
-  /** Hình thức làm việc (Remote/Hybrid) tách riêng khỏi thành phố để các nhóm cùng cấp. */
-  function modeKeys(str) { return rawLocs(str).filter(function (x) { return MODES.indexOf(x) >= 0; }); }
-  /** Chỉ các thành phố/tỉnh. Job chỉ ghi Remote → nhóm "Làm việc từ xa"; không ghi gì → "Chưa ghi thành phố". */
-  function locKeys(str) {
-    var raw = rawLocs(str), c = raw.filter(function (x) { return MODES.indexOf(x) < 0 && x !== NOLOC && x.charAt(0) !== UNKNOWN; });
-    if (c.length) return c;
-    var u = raw.filter(function (x) { return x.charAt(0) === UNKNOWN; }).map(function (x) { return x.slice(1); });
-    return u.length ? u : [raw.indexOf('Remote') >= 0 ? REMOTE_ONLY : NOCITY];
-  }
-  /** Quận/huyện/phường/khu đô thị → thành phố cha, để danh sách chỉ còn cấp thành phố/tỉnh. */
-  var DISTRICTS = [
-    ['Hồ Chí Minh', 'thu duc|binh thanh|go vap|phu nhuan|tan binh|tan phu|binh tan|nha be|hoc mon|cu chi|binh chanh|can gio|thao dien|an phu|linh trung|hiep binh|tan son nhat|phu my hung|saigon pearl|landmark|vo van tan|cong hoa|nguyen van linh|quan [0-9]+|q ?[0-9]{1,2}|district [0-9]+'],
-    ['Hà Nội', 'cau giay|dong da|ba dinh|hai ba trung|hoan kiem|tay ho|thanh xuan|long bien|hoang mai|ha dong|bac tu liem|nam tu liem|my dinh|yen hoa|nam trung yen|trung hoa|trung kinh|duy tan|pham hung|lang ha|keangnam|hoa lac|thach that|dong anh|gia lam|me tri|cau dien|nghia do|dich vong|trung yen']
-  ].map(function (d) { return [new RegExp('^(' + d[1] + ')$'), d[0]]; });
-  var UNKNOWN = '?';
-  function rawLocs(str) {
-    var out = [];
-    String(str || '').split(/[,;\/|·]|\s-\s|\svà\s/i).forEach(function (x) {
-      x = x.trim(); if (!x) return;
-      var k = plain(x), name = null;
-      LOC_MAP.forEach(function (m) { if (!name && m[0].test(k)) name = m[1]; });
-      if (!name) {
-        var core = k.replace(/\b(district|city|ward)\b/g, ' ').replace(/^(quan|phuong|huyen|xa|thi tran|kdt|khu do thi|khu dan cu|p|q|h|tp|thanh pho|tinh)\s+/, '').replace(/\s+/g, ' ').trim();
-        LOC_MAP.forEach(function (m) { if (!name && m[0].test(core)) name = m[1]; });
-        DISTRICTS.forEach(function (m) { if (!name && (m[0].test(core) || m[0].test(k))) name = m[1]; });
-      }
-      if (!name) name = UNKNOWN + x.charAt(0).toUpperCase() + x.slice(1);
-      if (out.indexOf(name) < 0) out.push(name);
-    });
-    if (out.length > 1) out = out.filter(function (x) { return x.charAt(0) !== UNKNOWN; });
-    return out.length ? out : [NOLOC];
-  }
-  var CITY_ORDER = ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng'];
-  function cityCmp(a, b) { var tail = function (x) { return x === NOCITY ? 2 : x === REMOTE_ONLY ? 1 : 0; }, ia = CITY_ORDER.indexOf(a), ib = CITY_ORDER.indexOf(b);
-    return tail(a) - tail(b) || (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b, 'vi'); }
+  var LL = window.LunaLoc, plain = LL.plain, rawLocs = LL.rawLocs, locKeys = LL.locKeys, modeKeys = LL.modeKeys, cityCmp = LL.cityCmp, NOLOC = LL.NOLOC, NOCITY = LL.NOCITY, REMOTE_ONLY = LL.REMOTE_ONLY, MODES = LL.MODES;
   function prioBadge(j) { var p = j.priority || 'normal'; return p === 'normal' ? '' : ' <span class="pri ' + p + '" title="Mức ưu tiên">' + (p === 'urgent' ? '🔥 ' : '▲ ') + PRIO[p][0] + '</span>'; }
   function jobsFiltered(count) {
     var q = plain(JF.q);
@@ -910,7 +870,7 @@
     drawer('<div class="dh"><div style="flex:1;min-width:0"><h2>' + esc(j.title || 'Job mới') + '</h2><div class="s">' + (j.slug ? esc(location.origin + '/jobs/' + j.slug) : 'Chưa lưu') + '</div></div><button class="b sm" data-act="close" type="button">Đóng</button></div><div class="db">' +
       (j.id ? '' : '<div class="sec"><span class="lbl">Dán JD để AI điền sẵn</span><textarea class="i2" id="jdtext" placeholder="Dán nguyên nội dung JD (từ khách hàng hoặc nơi khác)…" style="min-height:110px"></textarea>' + langSel + '<div style="margin-top:8px"><button class="b" data-act="jdai" type="button">Điền tự động bằng AI</button></div></div>') +
       '<div class="sec"><span class="lbl">Thông tin chính</span>' + field('Tên vị trí', 'title', j.title) + (j.id ? langSel + '<div class="muted" style="font-size:12.5px;margin:-4px 0 12px">Đổi ngôn ngữ chỉ đổi nhãn và form trên trang job. Nội dung JD bạn tự sửa, hoặc tạo lại bằng AI.</div>' : '') +
-      '<div class="g2"><div class="fld"><label class="lbl">Cấp độ</label>' + sel('level', [['', '—'], ['Intern', 'Intern'], ['Junior', 'Junior'], ['Mid', 'Mid'], ['Senior', 'Senior'], ['Lead', 'Lead']], j.level) + '</div><div class="fld"><label class="lbl">Loại hình</label>' + sel('job_type', ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'].map(function (x) { return [x, x]; }), j.job_type) + '</div></div>' +
+      '<div class="g2"><div class="fld"><label class="lbl">Cấp độ (chọn được nhiều)</label><input type="hidden" data-k="level" value="' + esc(j.level || '') + '"><div class="locq" style="margin:2px 0 0">' + ['Intern', 'Junior', 'Mid', 'Senior', 'Lead'].map(function (x) { return '<button class="chp' + (String(j.level || '').split(/\s*,\s*/).indexOf(x) >= 0 ? ' on' : '') + '" type="button" data-act="lvl" data-v="' + x + '" aria-pressed="' + (String(j.level || '').split(/\s*,\s*/).indexOf(x) >= 0) + '">' + x + '</button>'; }).join('') + '</div></div><div class="fld"><label class="lbl">Loại hình</label>' + sel('job_type', ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'].map(function (x) { return [x, x]; }), j.job_type) + '</div></div>' +
       '<div class="g2">' + field('Mức lương hiển thị', 'salary_text', j.salary_text, { ph: 'VD: 25–40 triệu, Thoả thuận' }) + field('Địa điểm làm việc', 'location', j.location, { ph: 'VD: Hồ Chí Minh, Hà Nội, Remote' }) + '</div><div class="locq">' + ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Remote', 'Hybrid'].map(function (x) { return '<button class="chp" type="button" data-act="locadd" data-v="' + x + '">+ ' + x + '</button>'; }).join('') + '</div><div class="g2">' + field('Kinh nghiệm tối thiểu (năm)', 'min_years', j.min_years, { type: 'number', step: '0.5' }) + '</div>' +
       '<div class="g2"><div class="fld"><label class="lbl">Trạng thái</label>' + sel('status', [['draft', 'Nháp (chưa hiện)'], ['open', 'Đang mở (hiện công khai)'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']], j.status) + '</div><div class="fld"><label class="lbl">Mức ưu tiên (chỉ mình bạn thấy)</label>' + sel('priority', [['normal', 'Thường'], ['high', '▲ Cao'], ['urgent', '🔥 Gấp']], j.priority || 'normal') + '</div></div>' +
       '<div class="sec"><span class="lbl">Nội dung JD</span>' + field('Tóm tắt (1–2 câu)', 'summary', j.summary, { area: 1 }) + field('Bạn sẽ làm gì (mỗi ý một dòng)', 'responsibilities', j.responsibilities, { area: 1 }) + field('Bạn cần có (mỗi ý một dòng)', 'requirements', j.requirements, { area: 1 }) + field('Quyền lợi (mỗi ý một dòng)', 'benefits', j.benefits, { area: 1 }) +
@@ -1083,6 +1043,7 @@
       case 'nasug': { var ni = $('.drawer [data-k="next_action"]'), di = $('.drawer [data-k="next_action_date"]'); if (!ni) return; ni.value = t.getAttribute('data-v'); if (di && !di.value) di.value = dayStr(+t.getAttribute('data-d')); return; }
       case 'nadate': { var d2 = $('.drawer [data-k="next_action_date"]'); if (d2) d2.value = dayStr(+t.getAttribute('data-d')); return; }
       case 'nadone': { var n3 = $('.drawer [data-k="next_action"]'), d3 = $('.drawer [data-k="next_action_date"]'); if (n3) n3.value = ''; if (d3) d3.value = ''; return toast('Đã xoá việc tiếp theo. Bấm Lưu để áp dụng.'); }
+      case 'lvl': { var hid = $('.drawer [data-k="level"]'); if (!hid) return; t.classList.toggle('on'); t.setAttribute('aria-pressed', t.classList.contains('on')); hid.value = $$('.drawer [data-act="lvl"].on').map(function (x) { return x.getAttribute('data-v'); }).join(', '); return; }
       case 'locadd': { var li = $('.drawer [data-k="location"]'); if (!li) return; var v = t.getAttribute('data-v'), parts = li.value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
         if (parts.map(plain).indexOf(plain(v)) < 0) parts.push(v); li.value = parts.join(', '); return; }
       case 'newjob': return openJob('new');

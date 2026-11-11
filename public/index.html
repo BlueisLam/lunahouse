@@ -28,6 +28,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/site.css">
 <script src="/assets/config.js"></script>
+<script src="/assets/loc.js" defer></script>
 <script src="/assets/site.js" defer></script>
 </head>
 <body data-page="home">
@@ -52,6 +53,7 @@
 
   <div class="sec-head" id="jobs-head"><h2>Đang tuyển</h2><span class="count"><span id="count">…</span> vị trí</span></div>
   <div class="filters"><input class="in" id="q" type="search" placeholder="Tìm theo vị trí, công nghệ…" aria-label="Tìm vị trí"><div class="chips" id="levels" style="gap:8px"></div></div>
+  <div class="filters" id="cityrow" style="margin-top:-4px"><div class="chips" id="cities" style="gap:8px"></div></div>
   <div class="jobs" id="jobs"><div class="loading"><span class="spin"></span></div></div>
 
   <section class="pool">
