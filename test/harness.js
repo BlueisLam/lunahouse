@@ -51,6 +51,9 @@ function claudeReply(body) {
     const ids = [...text.matchAll(/"candidate_id":"([^"]+)"/g)].map(m => m[1]);
     return JSON.stringify(ids.map((id, i) => ({ candidate_id: id, score: 90 - i * 15, strengths: 'Mạnh về Java và Banking.', gaps: 'Chưa có Kafka production.' })));
   }
+  if (text.includes('AI SCREENING HỒ SƠ')) {
+    return JSON.stringify({ score: 78, summary: 'Khá phù hợp, thiếu Kafka.', strengths: ['6 năm Java Spring Boot', 'Có dự án Banking'], gaps: ['Chưa thấy Kafka production'], questions: ['Bạn đã dùng Kafka ở quy mô nào?'] });
+  }
   if (text.includes('Đọc đoạn mô tả công việc')) {
     return '```json\n' + JSON.stringify({ title: 'Senior Java Developer', level: 'Senior', job_type: 'Full-time', salary_text: '45–70 triệu', location: 'Hồ Chí Minh', summary: 'Phát triển hệ thống core banking.', responsibilities: 'Thiết kế API\nReview code', requirements: '5+ năm Java\nSpring Boot', benefits: 'Bảo hiểm cao cấp', must_have_tech: ['Java', 'Spring Boot'], nice_to_have_tech: ['Kafka'], domains: ['Banking'], min_years: 5 }) + '\n```';
   }

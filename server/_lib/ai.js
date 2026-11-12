@@ -321,6 +321,47 @@ async function scoreBatch(job, cands) {
   });
 }
 
+// ---------- AI screening một hồ sơ: đối chiếu CV với JD ----------
+function screenPrompt(job, c) {
+  const cv = String(c.cv_text || '').slice(0, 12000);
+  return `AI SCREENING HỒ SƠ. Bạn là recruiter IT giàu kinh nghiệm. Đối chiếu CV của ứng viên với JD và đánh giá độ phù hợp.
+
+JD:
+${JSON.stringify({
+    title: job.title, level: job.level, job_type: job.job_type, min_years: job.min_years,
+    must_have: job.must_have_tech, nice_to_have: job.nice_to_have_tech, domains: job.domains,
+    salary: job.salary_text, location: job.location, summary: job.summary, responsibilities: job.responsibilities, requirements: job.requirements,
+  })}
+
+THÔNG TIN ĐÃ TRÍCH TỪ CV:
+${JSON.stringify({
+    years: c.total_years_experience, by_role: c.years_experience_by_role, positions: c.positions, technologies: c.technologies,
+    domains: c.project_domains, english: c.english_level, expected_salary: c.expected_salary, headline: c.headline, address: c.address,
+  })}
+
+NỘI DUNG CV (có thể rỗng nếu CV chưa đọc được):
+${cv || '(không có)'}
+
+Trả về DUY NHẤT một JSON object:
+{"score":0-100,"summary":"1-2 câu kết luận","strengths":["..."],"gaps":["..."],"questions":["..."]}
+
+Quy tắc:
+- score là khả năng ứng viên qua vòng sàng lọc của khách hàng với JD này. Từ 70 trở lên là nên đẩy tiếp, 50-69 là cân nhắc, dưới 50 là chưa phù hợp.
+- Công nghệ/kỹ năng tương đương được tính là phù hợp. Thiếu yêu cầu bắt buộc, thiếu số năm kinh nghiệm, hoặc sai lĩnh vực thì trừ điểm mạnh.
+- strengths (điểm mạnh) và gaps (điểm yếu/rủi ro): mỗi mục 2-4 ý, mỗi ý tối đa 25 từ, cụ thể, dẫn chứng từ CV, không nói chung chung. Không bịa thông tin không có trong CV.
+- questions: 2-3 câu nên hỏi ứng viên khi gọi để làm rõ điểm yếu hoặc điểm chưa rõ.
+- Tất cả viết TIẾNG VIỆT. Chỉ trả JSON, không thêm chữ nào khác.`;
+}
+
+async function screenCandidate(job, cand) {
+  const text = await llm({ text: screenPrompt(job, cand), max_tokens: 1800, model: MODEL_MAIN(), timeoutMs: 24000 });
+  const o = extractJson(text);
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('AI không trả về kết quả đọc được.');
+  const sc = Math.round(Number(o.score));
+  const arr = (v, n) => (Array.isArray(v) ? v : []).map(x => clean(x, 220)).filter(Boolean).slice(0, n);
+  return { score: isNaN(sc) ? 0 : Math.max(0, Math.min(100, sc)), summary: clean(o.summary, 400), strengths: arr(o.strengths, 4), gaps: arr(o.gaps, 4), questions: arr(o.questions, 3) };
+}
+
 // ---------- Dán JD → điền form ----------
 async function jdFromText(text, lang) {
   const en = lang === 'en';
@@ -348,4 +389,4 @@ ${String(text).slice(0, 12000)}`;
   return extractJson(out);
 }
 
-module.exports = { geminiKeys, _resetKeys: () => { keyState.clear(); rr = 0; deadGemini.clear(); }, llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION, canSeeImages, activeProviders };
+module.exports = { geminiKeys, _resetKeys: () => { keyState.clear(); rr = 0; deadGemini.clear(); }, llm, extractJson, cvPrompt, shapeParsed, mergeParsed, scoreBatch, screenCandidate, jdFromText, PARSE_PROMPT, MODEL_MAIN, MODEL_FAST, MODEL_VISION, canSeeImages, activeProviders };

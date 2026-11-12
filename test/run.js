@@ -1025,6 +1025,16 @@ test('báo cáo: recruiter gửi báo lỗi/góp ý, admin nhận thông báo v�
   for (let i = 0; i < 4; i++) await bb('reports.send', { kind: 'idea', message: 'Góp ý số ' + i + ' cho web' });
   await assert.rejects(() => bb('reports.send', { kind: 'idea', message: 'Góp ý quá nhiều lần' }), e => e.status === 429);
 });
+test('AI screening: đối chiếu CV với JD, lưu điểm/mạnh/yếu vào hồ sơ; không chấm được hồ sơ của người khác', async () => {
+  const r = await admin('apps.screen', { id: appId });
+  assert.strictEqual(r.screening.score, 78); assert.strictEqual(r.screening.verdict, 'Phù hợp');
+  assert.ok(r.screening.strengths.length && r.screening.gaps.length && r.screening.questions.length);
+  const g = await admin('apps.get', { id: appId });
+  assert.strictEqual(g.screening.score, 78, 'kết quả được lưu và trả lại khi mở hồ sơ');
+  assert.strictEqual(g.application.match_score, 78);
+  assert.ok(g.activities.some(x => x.type === 'ai' && /78\/100/.test(x.note)), 'có ghi nhật ký');
+  await assert.rejects(() => as(ckB)('apps.screen', { id: appId }), /404|không/i);
+});
 test('job: mức ưu tiên, nhân đôi thành bản nháp, thao tác hàng loạt; chỉ đụng job của chính mình', async () => {
   const bb = as(ckB);
   const mk = async (title, extra = {}) => (await bb('jobs.save', { title, status: 'draft', location: 'TP.HCM, Remote', ...extra })).job;

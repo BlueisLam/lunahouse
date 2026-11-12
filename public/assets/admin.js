@@ -725,6 +725,7 @@
       var a = r.application, c = r.candidate || {}, link = location.origin + '/track?code=' + encodeURIComponent(a.code);
       drawer('<div class="dh"><div style="flex:1;min-width:0"><h2>' + esc(c.full_name || '') + '</h2><div class="s">' + esc(r.job ? r.job.title : 'Kho tài năng') + '</div></div><button class="b sm" data-act="close" type="button">Đóng</button></div><div class="db">' +
         '<div class="sec"><div class="codebox"><b>' + esc(a.code) + '</b><button class="b sm" data-act="copy" data-t="' + esc(a.code) + '" type="button">Chép mã</button><button class="b sm" data-act="copy" data-t="' + esc(link) + '" type="button">Chép link tra cứu</button></div></div>' +
+        '<div class="sec scr" id="scrbox">' + screenHtml(r.screening, a.id, !!r.job) + '</div>' +
         '<div class="sec"><span class="lbl">Trạng thái</span><select class="i2 sel-st" data-k="status">' + S.stages.map(function (s) { return '<option value="' + s.key + '"' + (a.status === s.key ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('') + '</select>' +
         '<div class="fld" style="margin-top:12px"><label class="lbl">Lời nhắn / feedback cho ứng viên (chỉ hiện ở trang tra cứu khi bạn nhập; nếu bị từ chối sẽ hiện là Feedback)</label><textarea class="i2" data-k="public_note" maxlength="1000" placeholder="VD: Lịch phỏng vấn 14h thứ Năm (online qua Google Meet)… Hoặc khi từ chối: feedback ngắn, lý do chưa phù hợp, gợi ý cải thiện.">' + esc(a.public_note) + '</textarea></div>' +
         '<label class="chk"><input type="checkbox" data-k="notify">Báo cho ứng viên qua email khi lưu</label></div>' +
@@ -884,6 +885,20 @@
 
   /* ---------- matching ---------- */
   var MATCH = { job: '', res: null, busy: false, recentOn: false, recentN: 50 };
+  /** Khối AI screening trong hồ sơ: điểm phù hợp, điểm mạnh, điểm yếu, câu hỏi nên hỏi. */
+  function screenHtml(s, appId, hasJob) {
+    var btn = function (label, pri) { return '<button class="b sm' + (pri ? ' pri' : '') + '" type="button" data-act="screen" data-id="' + esc(appId) + '">' + label + '</button>'; };
+    if (!hasJob) return '<span class="lbl">AI screening</span><div class="muted" style="font-size:13px">Hồ sơ này chưa gắn job nên chưa có JD để đối chiếu.</div>';
+    if (!s) return '<span class="lbl">AI screening</span><div class="muted" style="font-size:13px;margin-bottom:10px">AI đọc JD và CV của ứng viên, cho điểm phù hợp, điểm mạnh, điểm yếu và câu hỏi nên hỏi khi gọi.</div>' + btn('✦ AI screening', true);
+    var k = s.score >= 70 ? 'hi' : s.score >= 50 ? 'md' : 'lo', li = function (a) { return (a || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join(''); };
+    var d = s.at ? new Date(s.at) : null, when = d && !isNaN(d) ? ' · ' + d.toLocaleDateString('vi-VN') : '';
+    return '<div class="scrhead"><span class="lbl" style="margin:0">AI screening' + esc(when) + '</span><span class="spc"></span>' + btn('↻ Chấm lại') + '</div>' +
+      '<div class="scrtop"><div class="score ' + k + '">' + esc(s.score) + '</div><div><b>' + esc(s.verdict || '') + '</b><div class="muted" style="font-size:13px">' + esc(s.summary || '') + '</div></div></div>' +
+      ((s.strengths || []).length ? '<div class="scrh ok">Điểm mạnh</div><ul class="scrl">' + li(s.strengths) + '</ul>' : '') +
+      ((s.gaps || []).length ? '<div class="scrh bad">Điểm yếu / rủi ro</div><ul class="scrl">' + li(s.gaps) + '</ul>' : '') +
+      ((s.questions || []).length ? '<div class="scrh">Nên hỏi khi gọi</div><ul class="scrl">' + li(s.questions) + '</ul>' : '') +
+      (s.job_title ? '<div class="muted" style="font-size:12px;margin-top:8px">Đối chiếu với JD: ' + esc(s.job_title) + '</div>' : '');
+  }
   VIEWS.matching = function () {
     var jobs = S.jobs.filter(function (j) { return j.status !== 'closed'; });
     $('#view').innerHTML = '<div class="ph"><h1>Matching</h1></div><div class="box" style="padding:16px;margin-bottom:16px"><div class="tb" style="margin:0"><select class="i2 grow" id="mjob"><option value="">Chọn job…</option>' +
@@ -1067,6 +1082,7 @@
       case 'copy': return copy(t.getAttribute('data-t'), t);
       case 'reopen': return openCandidate(id);
       case 'matchgo': return runMatch();
+      case 'screen': { var sb = $('#scrbox'); if (!sb || t.disabled) return; t.disabled = true; t.textContent = 'AI đang đọc CV và JD…'; return api('apps.screen', { id: id }).then(function (r) { sb.innerHTML = screenHtml(r.screening, id, true); toast('AI đã chấm xong'); refreshApps && refreshApps(); }).catch(function (e) { var b2 = $('#scrbox [data-act="screen"]'); if (b2) { b2.disabled = false; b2.textContent = '✦ AI screening'; } fail(e); }); }
       case 'mrecset': { var rc = $('#mrecon'), rn = $('#mrecn'); if (!rc || !rn) return; rc.checked = true; rn.disabled = false; rn.value = t.getAttribute('data-v'); MATCH.recentOn = true; MATCH.recentN = +rn.value; return; }
       case 'addpicked': return addPicked();
       case 'savecand': return saveCand(id);

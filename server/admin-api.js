@@ -376,7 +376,8 @@ A['apps.get'] = async (b) => {
   let cv_url = '';
   if (cand && cand.cv_path) { const s = await db.storage.from(BUCKET).createSignedUrl(cand.cv_path, 3600); cv_url = (s.data && s.data.signedUrl) || ''; }
   if (cand) { delete cand.cv_path; }
-  return { application: app, activities: acts, candidate: cand, job, cv_url };
+  const screening = (acts.find(a => a.type === 'ai') || {}).meta || null;
+  return { application: app, activities: acts, candidate: cand, job, cv_url, screening };
 };
 
 A['apps.create'] = async (b) => {
@@ -444,6 +445,25 @@ A['match.stage1'] = async (b) => {
       pre: p.pre, overlap: p.overlap, niceHit: p.niceHit, domainHit: p.domainHit, has_app: has.has(p.c.id),
     })),
   };
+};
+
+/** AI screening một hồ sơ: đối chiếu CV với JD → điểm, điểm mạnh, điểm yếu, câu hỏi nên hỏi. Lưu vào hồ sơ và nhật ký. */
+A['apps.screen'] = async (b) => {
+  const db = sb();
+  const app = await own('lh_applications', b.id, b._rid);
+  if (!app.job_id) throw new U.HttpError(400, 'Hồ sơ này chưa gắn job nên chưa có JD để đối chiếu.');
+  const job = await own('lh_jobs', app.job_id, b._rid, '*');
+  const cand = must(await db.from('lh_candidates').select('*').eq('id', app.candidate_id).eq('recruiter_id', b._rid).maybeSingle(), 'cand');
+  if (!cand) throw new U.HttpError(404, 'Không tìm thấy ứng viên.');
+  if (!String(cand.cv_text || '').trim() && !(cand.technologies || []).length && !cand.headline) throw new U.HttpError(400, 'CV của ứng viên chưa được đọc. Hãy mở hồ sơ ứng viên và bấm đọc CV bằng AI trước.');
+  await PLAN.useAi(b._rec);
+  let res;
+  try { res = await AI.screenCandidate(job, cand); } catch (e) { throw new U.HttpError(502, 'AI chưa chấm được lúc này, bạn thử lại sau ít phút nhé.'); }
+  const verdict = res.score >= 70 ? 'Phù hợp' : res.score >= 50 ? 'Cân nhắc' : 'Chưa phù hợp';
+  const shot = { ...res, verdict, job_title: job.title, at: new Date().toISOString() };
+  must(await db.from('lh_applications').update({ match_score: res.score, match_reason: U.clean(res.summary, 400) }).eq('id', app.id), 'screen save');
+  await logActivity(app.id, 'ai', `AI screening: ${res.score}/100 · ${verdict}`, shot, b._rid);
+  return { screening: shot };
 };
 
 A['match.score'] = async (b) => {

@@ -368,3 +368,10 @@ table.rep .bar { display: inline-block; height: 8px; border-radius: 4px; backgro
 .mrec .mrecn { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 14px; }
 .mrec .mrecn input { width: 84px; min-height: 36px; padding: 6px 10px; }
 .mrec .mrecn input:disabled { opacity: .5; }
+
+.scr { background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; }
+.scrhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; } .scrhead .spc { flex: 1; }
+.scrtop { display: flex; gap: 12px; align-items: center; } .scrtop .score { min-width: 54px; flex: none; }
+.scrh { font: 700 12px/1 var(--body); text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 6px; color: var(--muted); }
+.scrh.ok { color: var(--ok); } .scrh.bad { color: var(--warn); }
+.scrl { margin: 0; padding-left: 18px; font-size: 14px; } .scrl li { margin: 0 0 4px; }
