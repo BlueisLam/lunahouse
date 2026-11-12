@@ -2,6 +2,7 @@
 const { sb, must } = require('./_lib/db');
 const { json, wrap, HttpError } = require('./_lib/util');
 const T = require('./_lib/tenant');
+const { inferDivision } = require('./_lib/division');
 
 // Chỉ trả các cột công khai. Không có id, không có nội dung nội bộ.
 const COLS = 'slug,title,level,job_type,salary_text,location,summary,lang,responsibilities,requirements,benefits,must_have_tech,nice_to_have_tech,domains,min_years,created_at';
@@ -22,6 +23,9 @@ exports.handler = wrap(async (event) => {
   // Trang của một recruiter: /api/jobs?handle=abc (không có handle = trang chủ của tài khoản chủ)
   const rec = await T.publicByHandle(qs.handle ? String(qs.handle).slice(0, 40) : '');
   if (!rec) throw new HttpError(404, 'Không tìm thấy trang này.');
-  const jobs = must(await q.eq('recruiter_id', rec.id).order('created_at', { ascending: false }), 'jobs');
-  return json(200, { jobs: (jobs || []).map(({ recruiter_id, ...j }) => j), profile: T.publicProfile(rec) }, { 'cache-control': 'public, max-age=60' });
+  const list = (cols) => sb().from('lh_jobs').select(cols + ',recruiter_id').eq('status', 'open').eq('recruiter_id', rec.id).order('created_at', { ascending: false });
+  let r = await list(COLS + ',division');
+  if (r.error) r = await list(COLS); // chưa chạy SQL "khối job": suy ra khối theo tên vị trí
+  const jobs = must(r, 'jobs');
+  return json(200, { jobs: (jobs || []).map(({ recruiter_id, ...j }) => ({ ...j, division: j.division || inferDivision(j.title) })), profile: T.publicProfile(rec) }, { 'cache-control': 'public, max-age=60' });
 });

@@ -129,11 +129,17 @@
         return;
       }
       if (!rows.length) { box.innerHTML = '<div class="empty"><h3>Không có vị trí khớp bộ lọc</h3><p>Thử bỏ bớt từ khoá, hoặc gửi CV vào kho tài năng ở bên dưới.</p></div>'; return; }
-      box.innerHTML = rows.map(function (j) {
+      var card = function (j) {
         return '<a class="job" href="/jobs/' + encodeURIComponent(j.slug) + '"><div><h3>' + esc(j.title) + '</h3><div class="meta">' +
           (j.level ? '<span><b>' + esc(lvls(j).join(' · ')) + '</b></span>' : '') + '<span>' + esc(j.job_type || 'Full-time') + '</span>' +
           '<span>' + esc(j.salary_text || tFor(j.lang)('Thoả thuận', 'Negotiable')) + '</span>' + (j.location ? '<span>' + esc(j.location) + '</span>' : '') + '</div></div><span class="go" aria-hidden="true">→</span>' +
           '<div class="chips">' + chips(j.must_have_tech, 'mono', 6) + '</div></a>';
+      };
+      // Chia hai nhóm: Khối dự án / Back office. Chỉ có một nhóm thì hiện danh sách phẳng như cũ.
+      var DIV = [['project', 'Khối dự án', 'Project'], ['backoffice', 'Back office', 'Back office']];
+      var groups = DIV.map(function (d) { return { d: d, rows: rows.filter(function (j) { return (j.division || 'project') === d[0]; }) }; }).filter(function (g) { return g.rows.length; });
+      box.innerHTML = groups.length < 2 ? rows.map(card).join('') : groups.map(function (g) {
+        return '<div class="grp"><h3>' + esc(g.d[1]) + '</h3><span class="n">' + g.rows.length + ' vị trí</span></div>' + g.rows.map(card).join('');
       }).join('');
     }
     function pills() {

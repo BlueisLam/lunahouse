@@ -1031,6 +1031,11 @@ test('job: mức ưu tiên, nhân đôi thành bản nháp, thao tác hàng lo�
   const j1 = await mk('Ưu tiên A', { priority: 'urgent' }), j2 = await mk('Ưu tiên B'), j3 = await mk('Ưu tiên C', { priority: 'không-hợp-lệ' });
   assert.strictEqual(j1.priority, 'urgent'); assert.strictEqual(j2.priority, 'normal'); assert.strictEqual(j3.priority, 'normal', 'giá trị lạ về Thường');
   assert.strictEqual((await bb('jobs.save', { id: j2.id, priority: 'high' })).job.priority, 'high');
+  // khối job: tự đoán theo tên khi chưa chọn, chọn tay thì giữ; API công khai trả division
+  const jb = (await bb('jobs.save', { title: 'HR Generalist', status: 'draft' })).job, jp = (await bb('jobs.save', { title: 'Java Developer', status: 'draft' })).job;
+  assert.strictEqual(jb.division, 'backoffice'); assert.strictEqual(jp.division, 'project');
+  assert.strictEqual((await bb('jobs.save', { id: jp.id, division: 'backoffice' })).job.division, 'backoffice');
+  assert.strictEqual((await bb('jobs.save', { id: jp.id, division: 'lạ' })).job.division, 'project', 'giá trị lạ về Khối dự án');
   // nhiều cấp độ: nhận mảng hoặc chuỗi, giữ thứ tự chuẩn, bỏ giá trị lạ
   assert.strictEqual((await bb('jobs.save', { id: j1.id, level: ['Mid', 'Junior', 'xyz'] })).job.level, 'Junior, Mid');
   assert.strictEqual((await bb('jobs.save', { id: j1.id, level: 'senior, Lead' })).job.level, 'Senior, Lead');

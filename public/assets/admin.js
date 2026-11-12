@@ -773,7 +773,7 @@
   function jobRow(j, count) {
     var n = count[j.id] || 0, picked = !!JF.sel[j.id], p = j.priority || 'normal';
     var locs = String(j.location || '').trim() ? [String(j.location).trim()] : [];
-    var meta = [j.level, j.job_type, j.salary_text].filter(Boolean).join(' · ');
+    var meta = [j.level, j.job_type, j.salary_text, j.division === 'backoffice' ? 'Back office' : ''].filter(Boolean).join(' · ');
     return '<div class="jrow2' + (picked ? ' sel' : '') + (j.status === 'closed' ? ' off' : '') + '" data-act="' + (JF.pick ? 'jpick' : 'job') + '" data-id="' + j.id + '">' +
       (JF.pick ? '<span class="jck" aria-hidden="true">' + (picked ? '✓' : '') + '</span>' : '') +
       '<div class="jmain"><div class="t1">' + esc(j.title) + prioBadge(j) + (j.lang === 'en' ? ' <span class="stt draft">EN</span>' : '') + '</div>' +
@@ -798,7 +798,7 @@
     else {
       var groups = {}, order = [];
       list.forEach(function (j) {
-        var keys = JF.group === 'loc' ? locKeys(j.location) : JF.group === 'status' ? [JLABEL[j.status]] : [PRIO[j.priority || 'normal'][0]];
+        var keys = JF.group === 'loc' ? locKeys(j.location) : JF.group === 'status' ? [JLABEL[j.status]] : JF.group === 'div' ? [j.division === 'backoffice' ? 'Back office' : 'Khối dự án'] : [PRIO[j.priority || 'normal'][0]];
         keys.forEach(function (k) { if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(j); });
       });
       if (JF.group === 'loc') order.sort(cityCmp);
@@ -840,7 +840,7 @@
       '<select class="i2" id="jloc" aria-label="Lọc theo thành phố">' + cityOpts() + '</select>' +
       '<select class="i2" id="jmode" aria-label="Lọc theo hình thức"><option value="">Mọi hình thức</option><option value="Remote"' + (JF.mode === 'Remote' ? ' selected' : '') + '>Remote</option><option value="Hybrid"' + (JF.mode === 'Hybrid' ? ' selected' : '') + '>Hybrid</option></select>' +
       '<select class="i2" id="jprio" aria-label="Lọc theo ưu tiên"><option value="">Mọi ưu tiên</option><option value="urgent"' + (JF.prio === 'urgent' ? ' selected' : '') + '>🔥 Gấp</option><option value="high"' + (JF.prio === 'high' ? ' selected' : '') + '>▲ Cao</option><option value="normal"' + (JF.prio === 'normal' ? ' selected' : '') + '>Thường</option></select>' +
-      '<select class="i2" id="jgroup" aria-label="Nhóm theo"><option value="loc"' + (JF.group === 'loc' ? ' selected' : '') + '>Nhóm: Thành phố</option><option value="status"' + (JF.group === 'status' ? ' selected' : '') + '>Nhóm: Trạng thái</option><option value="prio"' + (JF.group === 'prio' ? ' selected' : '') + '>Nhóm: Ưu tiên</option><option value="none"' + (JF.group === 'none' ? ' selected' : '') + '>Không nhóm</option></select>' +
+      '<select class="i2" id="jgroup" aria-label="Nhóm theo"><option value="loc"' + (JF.group === 'loc' ? ' selected' : '') + '>Nhóm: Thành phố</option><option value="status"' + (JF.group === 'status' ? ' selected' : '') + '>Nhóm: Trạng thái</option><option value="prio"' + (JF.group === 'prio' ? ' selected' : '') + '>Nhóm: Ưu tiên</option><option value="div"' + (JF.group === 'div' ? ' selected' : '') + '>Nhóm: Khối</option><option value="none"' + (JF.group === 'none' ? ' selected' : '') + '>Không nhóm</option></select>' +
       '<select class="i2" id="jsort" aria-label="Sắp xếp"><option value="prio"' + (JF.sort === 'prio' ? ' selected' : '') + '>Xếp: Ưu tiên</option><option value="new"' + (JF.sort === 'new' ? ' selected' : '') + '>Xếp: Mới nhất</option><option value="apps"' + (JF.sort === 'apps' ? ' selected' : '') + '>Xếp: Nhiều hồ sơ</option><option value="title"' + (JF.sort === 'title' ? ' selected' : '') + '>Xếp: Tên A-Z</option></select></div>' +
       '<div class="box" id="jbody"></div><div class="jbar" id="jbar"></div>';
     paintJobFilters(); paintJobs();
@@ -861,7 +861,7 @@
     }).catch(fail);
   }
   function openJob(id) {
-    var j = id === 'new' ? { id: '', title: '', level: '', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '', lang: 'vi' }
+    var j = id === 'new' ? { id: '', title: '', level: '', division: 'project', job_type: 'Full-time', salary_text: '', location: '', summary: '', responsibilities: '', requirements: '', benefits: '', must_have_tech: [], nice_to_have_tech: [], domains: [], min_years: 0, status: 'draft', slug: '', lang: 'vi' }
       : S.jobs.filter(function (x) { return x.id === id; })[0];
     if (!j) return;
     S.open = { type: 'job', id: id }; setHash('job/' + id);
@@ -873,6 +873,7 @@
       '<div class="g2"><div class="fld"><label class="lbl">Cấp độ (chọn được nhiều)</label><input type="hidden" data-k="level" value="' + esc(j.level || '') + '"><div class="locq" style="margin:2px 0 0">' + ['Intern', 'Junior', 'Mid', 'Senior', 'Lead'].map(function (x) { return '<button class="chp' + (String(j.level || '').split(/\s*,\s*/).indexOf(x) >= 0 ? ' on' : '') + '" type="button" data-act="lvl" data-v="' + x + '" aria-pressed="' + (String(j.level || '').split(/\s*,\s*/).indexOf(x) >= 0) + '">' + x + '</button>'; }).join('') + '</div></div><div class="fld"><label class="lbl">Loại hình</label>' + sel('job_type', ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'].map(function (x) { return [x, x]; }), j.job_type) + '</div></div>' +
       '<div class="g2">' + field('Mức lương hiển thị', 'salary_text', j.salary_text, { ph: 'VD: 25–40 triệu, Thoả thuận' }) + field('Địa điểm làm việc', 'location', j.location, { ph: 'VD: Hồ Chí Minh, Hà Nội, Remote' }) + '</div><div class="locq">' + ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Remote', 'Hybrid'].map(function (x) { return '<button class="chp" type="button" data-act="locadd" data-v="' + x + '">+ ' + x + '</button>'; }).join('') + '</div><div class="g2">' + field('Kinh nghiệm tối thiểu (năm)', 'min_years', j.min_years, { type: 'number', step: '0.5' }) + '</div>' +
       '<div class="g2"><div class="fld"><label class="lbl">Trạng thái</label>' + sel('status', [['draft', 'Nháp (chưa hiện)'], ['open', 'Đang mở (hiện công khai)'], ['paused', 'Tạm dừng'], ['closed', 'Đã đóng']], j.status) + '</div><div class="fld"><label class="lbl">Mức ưu tiên (chỉ mình bạn thấy)</label>' + sel('priority', [['normal', 'Thường'], ['high', '▲ Cao'], ['urgent', '🔥 Gấp']], j.priority || 'normal') + '</div></div>' +
+      '<div class="fld"><label class="lbl">Khối (cách nhóm job ở trang chủ)</label>' + sel('division', [['project', 'Khối dự án'], ['backoffice', 'Back office']], j.division || 'project') + '</div>' +
       '<div class="sec"><span class="lbl">Nội dung JD</span>' + field('Tóm tắt (1–2 câu)', 'summary', j.summary, { area: 1 }) + field('Bạn sẽ làm gì (mỗi ý một dòng)', 'responsibilities', j.responsibilities, { area: 1 }) + field('Bạn cần có (mỗi ý một dòng)', 'requirements', j.requirements, { area: 1 }) + field('Quyền lợi (mỗi ý một dòng)', 'benefits', j.benefits, { area: 1 }) +
       '<div class="muted" style="font-size:12.5px">Số lượng tuyển không hiển thị. Giờ làm việc 9:00–18:00 T2–T6 và quy trình phỏng vấn 2 vòng offline tự thêm vào trang JD.</div></div>' +
       '<div class="sec"><span class="lbl">Dùng cho matching</span>' + field('Tech bắt buộc (cách nhau bằng dấu phẩy)', 'must_have_tech', (j.must_have_tech || []).join(', '), { list: 1 }) + field('Tech là điểm cộng', 'nice_to_have_tech', (j.nice_to_have_tech || []).join(', '), { list: 1 }) + field('Domain ưu tiên', 'domains', (j.domains || []).join(', '), { list: 1 }) + '</div></div>' +

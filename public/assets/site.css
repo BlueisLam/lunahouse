@@ -336,3 +336,8 @@ textarea.in { min-height: 96px; resize: vertical; line-height: 1.5; }
   .foot .sp { margin-left: 0; display: flex; flex-wrap: wrap; gap: 0 14px; }
   .foot .sp a { display: inline-block; padding: 8px 0; }
 }
+
+.jobs .grp { display: flex; align-items: baseline; gap: 12px; padding: 26px 0 10px; border-bottom: 2px solid var(--ink); }
+.jobs .grp:first-child { padding-top: 14px; }
+.jobs .grp h3 { font-size: 19px; letter-spacing: .01em; }
+.jobs .grp .n { font: 500 13px/1 var(--mono); color: var(--muted); }

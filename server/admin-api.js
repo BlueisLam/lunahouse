@@ -13,6 +13,7 @@ const MAX_CV_BYTES = 4 * 1024 * 1024;
 const LIST_COLS = 'id,full_name,address,phone_number,email,positions,total_years_experience,technologies,project_domains,headline,is_open_to_work,parse_status,dup_of,source,expected_salary,english_level,job_type_preference,cv_filename,cv_upload_date,created_at';
 const JOB_STATUS = ['draft', 'open', 'paused', 'closed'];
 const JOB_PRIORITY = ['normal', 'high', 'urgent'];
+const { DIVISIONS, inferDivision } = require('./_lib/division');
 const JOB_TYPES = ['Full-time', 'Part-time', 'Freelance', 'Contract', 'Internship'];
 const SCORE_BATCH_MAX = 6;
 
@@ -63,6 +64,7 @@ function jobPatch(b) {
   if (b.min_years !== undefined) { const n = parseFloat(b.min_years); o.min_years = isNaN(n) ? 0 : Math.max(0, Math.min(40, n)); }
   if (b.status !== undefined) o.status = JOB_STATUS.includes(b.status) ? b.status : 'draft';
   if (b.priority !== undefined) o.priority = JOB_PRIORITY.includes(b.priority) ? b.priority : 'normal';
+  if (b.division !== undefined) o.division = DIVISIONS.includes(b.division) ? b.division : 'project';
   return o;
 }
 
@@ -111,7 +113,7 @@ async function createApp({ job_id, candidate_id, match_score, match_reason, rid 
 const A = {};
 
 A.bootstrap = async (b) => {
-  const jobs = must(await sb().from('lh_jobs').select('*').eq('recruiter_id', b._rid).order('created_at', { ascending: false }), 'jobs');
+  const jobs = must(await sb().from('lh_jobs').select('*').eq('recruiter_id', b._rid).order('created_at', { ascending: false }), 'jobs').map(j => ({ ...j, division: j.division || inferDivision(j.title) }));
   let unread = 0;
   try {
     const r = await sb().from('lh_threads').select('id', { count: 'exact', head: true }).eq('unread_admin', true).eq('recruiter_id', b._rid);
@@ -235,7 +237,8 @@ async function uniqueSlug(db, title) {
   }
   return slug;
 }
-const missingPriority = (r) => r && r.error && /priority/i.test(r.error.message || '');
+const missingPriority = (r) => r && r.error && /priority|division/i.test(r.error.message || '');
+const stripNew = (o) => { delete o.priority; delete o.division; };
 
 A['jobs.save'] = async (b) => {
   const db = sb();
@@ -243,15 +246,16 @@ A['jobs.save'] = async (b) => {
   if (!b.id) {
     if (!patch.title) throw new U.HttpError(400, 'Cần có tên vị trí.');
     if (patch.status === 'open') await PLAN.checkOpenJob(b._rec, b._rid);
+    if (!patch.division) patch.division = inferDivision(patch.title); // job mới chưa chọn khối: đoán theo tên
     const slug = await uniqueSlug(db, patch.title);
     let r = await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single();
-    if (missingPriority(r)) { delete patch.priority; r = await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(); } // chưa chạy SQL ưu tiên
+    if (missingPriority(r)) { stripNew(patch); r = await db.from('lh_jobs').insert({ ...patch, slug, recruiter_id: b._rid }).select().single(); } // chưa chạy SQL ưu tiên/khối
     return { job: must(r, 'insert job') };
   }
   const curJob = await own('lh_jobs', b.id, b._rid, 'id,status');
   if (patch.status === 'open' && curJob.status !== 'open') await PLAN.checkOpenJob(b._rec, b._rid);
   let r = await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single();
-  if (missingPriority(r)) { delete patch.priority; r = await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(); }
+  if (missingPriority(r)) { stripNew(patch); r = await db.from('lh_jobs').update(patch).eq('id', b.id).eq('recruiter_id', b._rid).select().single(); }
   return { job: must(r, 'update job') };
 };
 
@@ -262,10 +266,10 @@ A['jobs.duplicate'] = async (b) => {
   const title = (String(src.title).replace(/\s*\(bản sao\)$/i, '') + ' (bản sao)').slice(0, 120);
   const copy = { title, level: src.level, job_type: src.job_type, salary_text: src.salary_text, location: src.location, lang: src.lang, summary: src.summary,
     responsibilities: src.responsibilities, requirements: src.requirements, benefits: src.benefits, must_have_tech: src.must_have_tech, nice_to_have_tech: src.nice_to_have_tech,
-    domains: src.domains, min_years: src.min_years, status: 'draft', priority: src.priority || 'normal' };
+    domains: src.domains, min_years: src.min_years, status: 'draft', priority: src.priority || 'normal', division: src.division || inferDivision(src.title) };
   const slug = await uniqueSlug(db, title);
   let r = await db.from('lh_jobs').insert({ ...copy, slug, recruiter_id: b._rid }).select().single();
-  if (missingPriority(r)) { delete copy.priority; r = await db.from('lh_jobs').insert({ ...copy, slug, recruiter_id: b._rid }).select().single(); }
+  if (missingPriority(r)) { stripNew(copy); r = await db.from('lh_jobs').insert({ ...copy, slug, recruiter_id: b._rid }).select().single(); }
   return { job: must(r, 'duplicate job') };
 };
 
