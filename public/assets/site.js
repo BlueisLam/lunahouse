@@ -254,6 +254,7 @@
       if (['pdf', 'docx', 'jpg', 'jpeg', 'png'].indexOf(ext) < 0) return showErr(t('Mình chỉ nhận CV dạng PDF, DOCX, JPG hoặc PNG.', 'Only PDF, DOCX, JPG or PNG files are accepted.'));
       if (f.size > MAX_CV) return showErr(t('CV lớn hơn 4MB. Bạn nén file hoặc xuất lại PDF nhẹ hơn nhé.', 'Your CV is larger than 4MB. Please compress it or export a lighter PDF.'));
       err.classList.add('hide'); file = f; drop.classList.add('has');
+      try { if (f.arrayBuffer) f.arrayBuffer().then(function (buf) { if (file === f) file = new File([buf], f.name, { type: f.type }); }, function () { file = null; drop.classList.remove('has'); showErr(t('Không đọc được file CV. Bạn chọn lại file nhé.', 'Could not read the CV file. Please choose it again.')); }); } catch (e0) {}
       $('#cvt').textContent = f.name; $('#cvs').textContent = (f.size / 1024 < 1024 ? Math.round(f.size / 1024) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB') + t(' · bấm để đổi file', ' · click to change');
     }
     $('#f-cv').addEventListener('change', function (e) { setFile(e.target.files[0]); });
@@ -278,7 +279,14 @@
       put('job_slug', job ? job.slug : ''); put('handle', HANDLE); put('full_name', v('#f-name')); put('phone_number', v('#f-phone')); put('email', v('#f-email'));
       put('address', v('#f-addr')); put('expected_salary', v('#f-sal')); put('notice_period', $('#f-notice').value); put('links', v('#f-links'));
       put('cover_note', v('#f-note')); put('website', form.elements.website.value); put('consent', 'true'); fd.append('cv', file, file.name);
-      fetch('/api/apply', { method: 'POST', body: fd }).then(function (res) {
+      var netErr = function () { return t('Mạng đang không ổn nên chưa gửi được hồ sơ. Bạn kiểm tra Wi‑Fi/4G rồi bấm gửi lại nhé (thông tin đã nhập vẫn còn). Nếu vẫn lỗi, hãy mở link bằng Chrome/Safari thay vì trong Messenger/Zalo.', 'Network problem – your application was not sent. Please check your connection and try again (your details are kept). If it persists, open this link in Chrome/Safari instead of an in-app browser.'); };
+      var send = function (tries) {
+        return fetch('/api/apply', { method: 'POST', body: fd }).catch(function (ne) {
+          if (tries > 0) return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return send(tries - 1); });
+          var x = new Error(netErr()); x.net = true; throw x;
+        });
+      };
+      send(1).then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (j) {
           if (!res.ok) { var e = new Error(j.error || 'Có lỗi xảy ra, bạn thử lại nhé.'); e.status = res.status; throw e; }
           return j;
