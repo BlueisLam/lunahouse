@@ -200,11 +200,14 @@
         ((j.must_have_tech || []).length ? '<div><dt>' + t('Công nghệ chính', 'Main tech') + '</dt><dd><div class="chips">' + chips(j.must_have_tech, 'mono') + '</div></dd></div>' : '') +
         ((j.domains || []).length ? '<div><dt>' + t('Lĩnh vực', 'Domain') + '</dt><dd>' + esc(j.domains.join(', ')) + '</dd></div>' : '') +
         '<div><dt>' + t('Mức lương', 'Salary') + '</dt><dd>' + esc(j.salary_text || t('Thoả thuận', 'Negotiable')) + '</dd></div>' + (j.location ? '<div><dt>' + t('Địa điểm', 'Location') + '</dt><dd>' + esc(j.location) + '</dd></div>' : '') + '</dl></div>' +
-        '<a class="btn block" href="#apply">' + t('Ứng tuyển vị trí này', 'Apply for this role') + '</a></aside></div>' +
+        '<a class="btn block" href="#apply">' + t('Ứng tuyển vị trí này', 'Apply for this role') + '</a>' +
+        '<button class="btn ghost block" id="jdpdf" type="button" style="margin-top:10px">' + t('Tải JD (PDF)', 'Download JD (PDF)') + '</button></aside></div>' +
         '<section class="qa-box" id="qa"><h2>' + t('Hỏi đáp', 'Questions') + '</h2><p class="sub">' + t('Có điều chưa rõ về vị trí này? Cứ hỏi, mình trả lời qua email. Câu hỏi chỉ mình và bạn xem được, trừ khi mình đăng công khai để các bạn khác cùng tham khảo.', 'Anything unclear about this role? Just ask and I will reply by email. Your question is only visible to you and me, unless I publish it so other candidates can learn from it.') + '</p><div id="qalist"></div><div id="qaform"></div></section>' +
         '<section class="apply-box" id="apply"><h2>' + t('Ứng tuyển', 'Apply') + '</h2><p class="sub">' + t('Điền một lần, nhận mã hồ sơ để theo dõi kết quả.', 'Fill it in once and get an application code to track your result.') + '</p><div id="form"></div></section></div>' +
         '<div class="stickybar" id="sticky"><a class="btn block" href="#apply">' + t('Ứng tuyển vị trí này', 'Apply for this role') + '</a></div>';
       document.body.classList.add('has-sticky');
+      var pdfBtn = $('#jdpdf');
+      if (pdfBtn) pdfBtn.addEventListener('click', function () { if (window.LunaJD) window.LunaJD.print(j, { brand: LH.brand || 'Luna', url: location.origin + location.pathname }); });
       mountApply($('#form'), j);
       mountQa(j);
       if (j.lang === 'en') {
